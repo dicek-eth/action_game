@@ -16,11 +16,24 @@
       height: 100%;
       overflow: hidden;
       background: #000;
+      font-family: monospace;
+      touch-action: none;
+    }
+
+    #appLayout {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #gameArea {
+      flex: 1 1 auto;
       display: flex;
       justify-content: center;
       align-items: center;
-      font-family: monospace;
-      touch-action: none;
+      padding: 6px 0;
+      background: #000;
     }
 
     canvas {
@@ -31,10 +44,94 @@
       box-shadow: 0 0 0 2px #111;
       touch-action: none;
     }
+
+    #controlsArea {
+      display: none;
+      background: linear-gradient(180deg, #1a1a1a 0%, #0f0f0f 100%);
+      border-top: 2px solid #242424;
+      padding: 10px 14px;
+      touch-action: none;
+    }
+
+    #controlsInner {
+      max-width: 720px;
+      width: 100%;
+      height: 100%;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    #movePad {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .controlBtn {
+      border: 2px solid #5c5c5c;
+      background: radial-gradient(circle at 30% 28%, #6c6c6c 0%, #3d3d3d 45%, #2a2a2a 100%);
+      color: #ffffff;
+      font-family: monospace;
+      font-weight: 700;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      box-shadow: 0 4px 0 #181818;
+      transform: translateY(0);
+    }
+
+    .controlBtn.active {
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 #141414;
+      filter: brightness(1.15);
+    }
+
+    #btnLeft, #btnRight {
+      width: 70px;
+      height: 70px;
+      border-radius: 16px;
+      font-size: 34px;
+      line-height: 1;
+    }
+
+    #btnJump {
+      width: 106px;
+      height: 106px;
+      border-radius: 999px;
+      font-size: 23px;
+      letter-spacing: 1px;
+      border-color: #8c2020;
+      background: radial-gradient(circle at 30% 28%, #e44b4b 0%, #b32727 44%, #7e1313 100%);
+    }
+
+    #appLayout.ios-controls #gameArea {
+      flex: 2 1 0;
+    }
+
+    #appLayout.ios-controls #controlsArea {
+      display: block;
+      flex: 1 1 0;
+    }
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas" width="256" height="240"></canvas>
+  <div id="appLayout">
+    <div id="gameArea">
+      <canvas id="gameCanvas" width="256" height="240"></canvas>
+    </div>
+    <div id="controlsArea">
+      <div id="controlsInner">
+        <div id="movePad">
+          <button id="btnLeft" class="controlBtn" type="button" aria-label="Move Left">◀</button>
+          <button id="btnRight" class="controlBtn" type="button" aria-label="Move Right">▶</button>
+        </div>
+        <button id="btnJump" class="controlBtn" type="button" aria-label="Jump">JUMP</button>
+      </div>
+    </div>
+  </div>
   <script>
     (() => {
       "use strict";
@@ -61,12 +158,26 @@
       };
 
       const canvas = document.getElementById("gameCanvas");
+      const appLayout = document.getElementById("appLayout");
+      const gameArea = document.getElementById("gameArea");
+      const btnLeft = document.getElementById("btnLeft");
+      const btnRight = document.getElementById("btnRight");
+      const btnJump = document.getElementById("btnJump");
       const ctx = canvas.getContext("2d");
 
+      function detectIOSDevice() {
+        const ua = navigator.userAgent || "";
+        const classicIOS = /iPad|iPhone|iPod/.test(ua);
+        const ipadOS = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+        return classicIOS || ipadOS;
+      }
+      const isIOSDevice = detectIOSDevice();
+      if (isIOSDevice) appLayout.classList.add("ios-controls");
+
       function resizeCanvas() {
-        const sx = Math.floor(window.innerWidth / CONFIG.INTERNAL_WIDTH);
-        const sy = Math.floor(window.innerHeight / CONFIG.INTERNAL_HEIGHT);
-        const scale = Math.max(1, Math.min(sx, sy));
+        const areaWidth = gameArea.clientWidth || window.innerWidth;
+        const areaHeight = gameArea.clientHeight || window.innerHeight;
+        const scale = Math.max(1, Math.min(areaWidth / CONFIG.INTERNAL_WIDTH, areaHeight / CONFIG.INTERNAL_HEIGHT));
         canvas.style.width = `${CONFIG.INTERNAL_WIDTH * scale}px`;
         canvas.style.height = `${CONFIG.INTERNAL_HEIGHT * scale}px`;
       }
@@ -144,9 +255,36 @@
         drawNesText(targetCtx, text, x, y, color, scale);
       }
 
-      const PIXEL_MAP = { ".": 0, "R": 1, "S": 2, "B": 3, "Y": 4, "G": 5, "T": 6, "3": 3 };
+      const PIXEL_MAP = {
+        ".": 0,
+        "R": 1,
+        "S": 2,
+        "B": 3,
+        "Y": 4,
+        "G": 5,
+        "T": 6,
+        "K": 7,
+        "W": 8,
+        "O": 9,
+        "C": 10,
+        "H": 11,
+        "P": 12,
+        "E": 13,
+        "3": 3,
+      };
       function sprite(rows) {
         return rows.map((row) => row.split("").map((ch) => PIXEL_MAP[ch] || 0));
+      }
+
+      function spriteFixed(rows, width, height) {
+        const fixed = [];
+        for (let y = 0; y < height; y++) {
+          let row = rows[y] || "";
+          if (row.length < width) row = row + ".".repeat(width - row.length);
+          if (row.length > width) row = row.slice(0, width);
+          fixed.push(row);
+        }
+        return sprite(fixed);
       }
 
       function drawIndexedSprite(targetCtx, pixels, palette, x, y, flipX = false) {
@@ -213,120 +351,335 @@
         4: "#f2c63d",
         5: "#27ae2a",
         6: "#5a2c0b",
+        7: "#000000",
+        8: "#ffffff",
+        9: "#8b4513",
+        10: "#a8b3b8",
+        11: "#6b777d",
+        12: "#8b44cf",
+        13: "#ffce90",
       };
 
       const SPRITES = {
         mario: {
-          idle: sprite([
-            "................",
+          idle: spriteFixed([
             ".....RRRRR......",
             "....RRRRRRRR....",
-            "...RRSSSSSSRR...",
-            "...RS333S33SR...",
-            "...R333SS333R...",
-            "...RR333333RR...",
-            "....R333333R....",
-            "...RR33RR33RR...",
-            "..RR33333333RR..",
-            "..R3333333333R..",
-            "..R3333RR3333R..",
-            "...R33R..R33R...",
-            "...R33....33R...",
-            "...333....333...",
-            "................",
-          ]),
+            "....EEEOOEE.....",
+            "...EEEEEOOEE....",
+            "...EWEEEOOEE....",
+            "...EEEEEEEE.....",
+            "....EEEEEE......",
+            "...YYBBYBBYY....",
+            "..YYYYBBBBBYY...",
+            "..YYBBBBBBBBBY..",
+            "..WWBBBBBBBBBW..",
+            "..WWBBBBBBBBBW..",
+            "...BBBBBBBBBB...",
+            "....BBBBBBBB....",
+            "...RRR...RRR....",
+            "..RRRR...RRRR...",
+          ], 16, 16),
           walk: [
-            sprite([
-              "................",
+            spriteFixed([
               ".....RRRRR......",
               "....RRRRRRRR....",
-              "...RRSSSSSSRR...",
-              "...RS333S33SR...",
-              "...R333SS333R...",
-              "...RR333333RR...",
-              "....R333333R....",
-              "...RR33RR33RR...",
-              "..RR33333333RR..",
-              "..R3333333333R..",
-              "..R3333RR3333R..",
-              "...R33R..R333...",
-              "...R33....33R...",
-              "..333......33...",
-              "................",
-            ]),
-            sprite([
-              "................",
+              "....EEEOOEE.....",
+              "...EEEEEOOEE....",
+              "...EWEEEOOEE....",
+              "...EEEEEEEE.....",
+              "....EEEEEE......",
+              "...YYBBYBBYY....",
+              "..YYYYBBBBBYY...",
+              "..YYBBBBBBBBBY..",
+              "..WWBBBBBBBBBW..",
+              "..WWBBBBBBBBBW..",
+              "...BBBBBBBBBB...",
+              "....BBBBBBBB....",
+              "...RRR....RRR...",
+              "..RRRR...RRRR...",
+            ], 16, 16),
+            spriteFixed([
               ".....RRRRR......",
               "....RRRRRRRR....",
-              "...RRSSSSSSRR...",
-              "...RS333S33SR...",
-              "...R333SS333R...",
-              "...RR333333RR...",
-              "....R333333R....",
-              "...RR33RR33RR...",
-              "..RR33333333RR..",
-              "..R3333333333R..",
-              "..R3333RR3333R..",
-              "....R33..33R....",
-              "...R333..333R...",
-              "..33........33..",
-              "................",
-            ]),
-            sprite([
-              "................",
+              "....EEEOOEE.....",
+              "...EEEEEOOEE....",
+              "...EWEEEOOEE....",
+              "...EEEEEEEE.....",
+              "....EEEEEE......",
+              "...YYBBYBBYY....",
+              "..YYYYBBBBBYY...",
+              "..YYBBBBBBBBBY..",
+              "..WWBBBBBBBBBW..",
+              "..WWBBBBBBBBBW..",
+              "...BBBBBBBBBB...",
+              "....BBBBBBBB....",
+              "..RRR....RRR....",
+              "...RRRR.RRRR....",
+            ], 16, 16),
+            spriteFixed([
               ".....RRRRR......",
               "....RRRRRRRR....",
-              "...RRSSSSSSRR...",
-              "...RS333S33SR...",
-              "...R333SS333R...",
-              "...RR333333RR...",
-              "....R333333R....",
-              "...RR33RR33RR...",
-              "..RR33333333RR..",
-              "..R3333333333R..",
-              "..R3333RR3333R..",
-              "...R333..R33R...",
-              "..R33....3333...",
-              "...33....33.....",
-              "................",
-            ]),
+              "....EEEOOEE.....",
+              "...EEEEEOOEE....",
+              "...EWEEEOOEE....",
+              "...EEEEEEEE.....",
+              "....EEEEEE......",
+              "...YYBBYBBYY....",
+              "..YYYYBBBBBYY...",
+              "..YYBBBBBBBBBY..",
+              "..WWBBBBBBBBBW..",
+              "..WWBBBBBBBBBW..",
+              "...BBBBBBBBBB...",
+              "....BBBBBBBB....",
+              "...RRR...RRR....",
+              "..RRRR...RRRR...",
+            ], 16, 16),
           ],
-          jump: sprite([
-            "................",
+          jump: spriteFixed([
             ".....RRRRR......",
             "....RRRRRRRR....",
-            "...RRSSSSSSRR...",
-            "...RS333S33SR...",
-            "...R333SS333R...",
-            "...RR333333RR...",
-            "...RR333333RR...",
-            "..RR333RR333RR..",
-            "..R3333333333R..",
-            "..R3333RR3333R..",
-            "...R333333333...",
-            "..R333R....R33..",
-            "..R33......33R..",
-            "...33......33...",
-            "................",
-          ]),
-          skid: sprite([
-            "................",
-            ".....RRRRR......",
-            "....RRRRRRRR....",
-            "...RRSSSSSSRR...",
-            "...RS333S33SR...",
-            "...R333SS333R...",
-            "...RR333333RR...",
-            "....R333333R....",
-            "..RR33333333RR..",
-            ".RR3333333333R..",
-            ".R33333333333R..",
-            "..R3333RR3333R..",
-            "...R333R..333R..",
-            "....33R...333...",
-            "...333.....33...",
-            "................",
-          ]),
+            "....EEEOOEE.....",
+            "...EEEEEOOEE....",
+            "...EWEEEOOEE....",
+            "...EEEEEEEE.....",
+            "....EEEEEE......",
+            "...YYBBYBBYY....",
+            "..YYYYBBBBBYY...",
+            "..YYBBBBBBBBBY..",
+            "..WWBBBBBBBBBW..",
+            "..WWBBBBBBBBBW..",
+            "...BBBBBBBBBB...",
+            "...BBBBBBBBBB...",
+            "...RRRR..RRRR...",
+            "..RRRR....RRRR..",
+          ], 16, 16),
+          skid: spriteFixed([
+            "....RRRRRR......",
+            "...RRRRRRRRR....",
+            "...EEEOOEE......",
+            "..EEEEEOOEE.....",
+            "..EWEEEOOEE.....",
+            "...EEEEEEEE.....",
+            "...EEEEEE.......",
+            "..YYBBYBBYY.....",
+            ".YYYYBBBBBYY....",
+            ".YYBBBBBBBBBY...",
+            ".WWBBBBBBBBBW...",
+            ".WWBBBBBBBBBW...",
+            "..BBBBBBBBBB....",
+            "..BBBBBBBBB.....",
+            "...RRR..RRR.....",
+            "..RRRR.RRRR.....",
+          ], 16, 16),
+          big: {
+            idle: spriteFixed([
+              ".....RRRRR......",
+              "....RRRRRRRR....",
+              "....RRRRRRRR....",
+              "....YYKYYKYY....",
+              "....YYYYKYYY....",
+              "....YYYYYYYY....",
+              "....KYYYYYYK....",
+              ".....KKKKKK.....",
+              "....RRBRBRR.....",
+              "...RRRBRBRRR....",
+              "..RRRRBRBRRRR...",
+              ".RRRRBBBBBRRRR..",
+              ".WWRRBBBBBRRWW..",
+              ".WWWBBBBBBBWWW..",
+              ".WW.BBBBBBB.WW..",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "...KKK...KKK....",
+              "..KKKK...KKKK...",
+              "..KKKK...KKKK...",
+              ".KKKKK...KKKKK..",
+            ], 16, 32),
+            walk: [
+              spriteFixed([
+                ".....RRRRR......",
+                "....RRRRRRRR....",
+                "....RRRRRRRR....",
+                "....YYKYYKYY....",
+                "....YYYYKYYY....",
+                "....YYYYYYYY....",
+                "....KYYYYYYK....",
+                ".....KKKKKK.....",
+                "....RRBRBRR.....",
+                "...RRRBRBRRR....",
+                "..RRRRBRBRRRR...",
+                ".RRRRBBBBBRRRR..",
+                ".WWRRBBBBBRRWW..",
+                ".WWWBBBBBBBWWW..",
+                ".WW.BBBBBBB.WW..",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "...KKK...KKK....",
+                "..KKKK...KKKK...",
+                "..KKKK...KKKK...",
+                ".KKKKK...KKKKK..",
+              ], 16, 32),
+              spriteFixed([
+                ".....RRRRR......",
+                "....RRRRRRRR....",
+                "....RRRRRRRR....",
+                "....YYKYYKYY....",
+                "....YYYYKYYY....",
+                "....YYYYYYYY....",
+                "....KYYYYYYK....",
+                ".....KKKKKK.....",
+                "....RRBRBRR.....",
+                "...RRRBRBRRR....",
+                "..RRRRBRBRRRR...",
+                ".RRRRBBBBBRRRR..",
+                ".WWRRBBBBBRRWW..",
+                ".WWWBBBBBBBWWW..",
+                ".WW.BBBBBBB.WW..",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "..KKKK...KKK....",
+                ".KKKK....KKKK...",
+                ".KKK.....KKKK...",
+                "..KKKK...KKKK...",
+              ], 16, 32),
+              spriteFixed([
+                ".....RRRRR......",
+                "....RRRRRRRR....",
+                "....RRRRRRRR....",
+                "....YYKYYKYY....",
+                "....YYYYKYYY....",
+                "....YYYYYYYY....",
+                "....KYYYYYYK....",
+                ".....KKKKKK.....",
+                "....RRBRBRR.....",
+                "...RRRBRBRRR....",
+                "..RRRRBRBRRRR...",
+                ".RRRRBBBBBRRRR..",
+                ".WWRRBBBBBRRWW..",
+                ".WWWBBBBBBBWWW..",
+                ".WW.BBBBBBB.WW..",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "....BBBBBBB.....",
+                "...KKK...KKK....",
+                "..KKKK...KKKK...",
+                "..KKKK...KKKK...",
+                ".KKKKK...KKKKK..",
+              ], 16, 32),
+            ],
+            jump: spriteFixed([
+              ".....RRRRR......",
+              "....RRRRRRRR....",
+              "....RRRRRRRR....",
+              "....YYKYYKYY....",
+              "....YYYYKYYY....",
+              "....YYYYYYYY....",
+              "....KYYYYYYK....",
+              ".....KKKKKK.....",
+              "....RRBRBRR.....",
+              "...RRRBRBRRR....",
+              "..RRRRBRBRRRR...",
+              ".RRRRBBBBBRRRR..",
+              ".WWRRBBBBBRRWW..",
+              ".WWWBBBBBBBWWW..",
+              ".WW.BBBBBBB.WW..",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....KKKKKKKK....",
+              "...KKKKKKKKKK...",
+              "..KKKKKKKKKKKK..",
+              "...KKKKKKKKKK...",
+            ], 16, 32),
+            skid: spriteFixed([
+              ".....RRRRR......",
+              "....RRRRRRRR....",
+              "....RRRRRRRR....",
+              "....YYKYYKYY....",
+              "....YYYYKYYY....",
+              "....YYYYYYYY....",
+              "....KYYYYYYK....",
+              ".....KKKKKK.....",
+              "....RRBRBRR.....",
+              "...RRRBRBRRR....",
+              "..RRRRBRBRRRR...",
+              ".RRRRBBBBBRRRR..",
+              ".WWRRBBBBBRRWW..",
+              ".WWWBBBBBBBWWW..",
+              ".WW.BBBBBBB.WW..",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "....BBBBBBB.....",
+              "..KKKK...KKK....",
+              ".KKKK....KKKK...",
+              ".KKK.....KKKK...",
+              "..KKKK...KKKK...",
+            ], 16, 32),
+          },
         },
         tiles: {
           ground: sprite([
@@ -477,44 +830,44 @@
         },
         enemies: {
           goombaWalk: [
-            sprite([
+            spriteFixed([
+              "......KKKK......",
+              ".....KOOOOK.....",
+              "....KOOOOOOK....",
+              "...KOOOOOOOOK...",
+              "...KOOWWKOOWK...",
+              "...KOOWWKOOWK...",
+              "...KOOOOOOOOK...",
+              "...KOOOOOOOOK...",
+              "..KOOOKKKKOOOK..",
+              "..KOOOOOOOOOOK..",
+              "...KOOOOOOOOK...",
+              "...KOOOOOOOOK...",
+              "....KKKKKKKK....",
+              "...KKK....KKK...",
+              "..KKKK....KKKK..",
               "................",
+            ], 16, 16),
+            spriteFixed([
+              "......KKKK......",
+              ".....KOOOOK.....",
+              "....KOOOOOOK....",
+              "...KOOOOOOOOK...",
+              "...KOOWWKOOWK...",
+              "...KOOWWKOOWK...",
+              "...KOOOOOOOOK...",
+              "...KOOOOOOOOK...",
+              "..KOOOKKKKOOOK..",
+              "..KOOOOOOOOOOK..",
+              "...KOOOOOOOOK...",
+              "...KOOOOOOOOK...",
+              "....KKKKKKKK....",
+              "..KKK......KKK..",
+              ".KKKK......KKKK.",
               "................",
-              "....BBBBBBBB....",
-              "...BB333333BB...",
-              "..BB33SSSS33BB..",
-              "..B333S..S333B..",
-              "..B3333333333B..",
-              "..BB33333333BB..",
-              ".BB333BBBB333BB.",
-              ".B3333BBBB3333B.",
-              "..B3333333333B..",
-              "..BB33....33BB..",
-              "...B33....33B...",
-              "..BB........BB..",
-              "................",
-              "................",
-            ]),
-            sprite([
-              "................",
-              "................",
-              "....BBBBBBBB....",
-              "...BB333333BB...",
-              "..BB33SSSS33BB..",
-              "..B333S..S333B..",
-              "..B3333333333B..",
-              "..BB33333333BB..",
-              ".BB333BBBB333BB.",
-              ".B3333BBBB3333B.",
-              "..B3333333333B..",
-              "..BB33....33BB..",
-              "..B33..33..33B..",
-              ".BB....33....BB.",
-              "..BB........BB..",
-              "................",
-            ]),
+            ], 16, 16),
           ],
-          goombaSquished: sprite([
+          goombaSquished: spriteFixed([
             "................",
             "................",
             "................",
@@ -522,90 +875,168 @@
             "................",
             "................",
             "................",
-            "................",
-            "...BBBBBBBBBB...",
-            "..BB33333333BB..",
-            "..B3333333333B..",
-            "...BB333333BB...",
-            "................",
-            "................",
+            "...KOOOOOOOOK...",
+            "..KOOOKKKKOOOK..",
+            "..KOOOOOOOOOOK..",
+            "...KOOOOOOOOK...",
+            "....KKKKKKKK....",
             "................",
             "................",
-          ]),
+            "................",
+            "................",
+          ], 16, 16),
           koopaWalk: [
-            sprite([
-              "................",
+            spriteFixed([
               ".....GGGGGG.....",
-              "....GGYYYYGG....",
-              "...GGYSSSSYGG...",
-              "..GGYS....SYGG..",
-              "..GGYSSSSSSYGG..",
-              "...GGYYYYYYGG...",
-              "...GGG3333GGG...",
-              "..GG33333333GG..",
-              ".GG3333..3333GG.",
-              ".GG3333333333GG.",
-              "..GG33....33GG..",
-              "..GG3......3GG..",
-              "...G3......3G...",
+              "...GGGGGGGGGG...",
+              "..GGGGGGGGGGGG..",
+              ".GGGGGGWWGGGGGG.",
+              ".GGGGGGWWGGGGGG.",
+              ".GGGGGGGGGGGGGG.",
+              "GGGGGGGGGGGGGGGG",
+              "GYYYGGGGGGGGYYYY",
+              "GYYYGGGGGGGGYYYY",
+              "GYYYGGGGGGGGYYYY",
+              "GGGGGGGGGGGGGGGG",
+              ".GGGGGGGGGGGGGG.",
+              "..GGGGGGGGGGGG..",
+              "...GG..GG..GG...",
+              "...GG..GG..GG...",
               "................",
-              "................",
-            ]),
-            sprite([
-              "................",
+            ], 16, 16),
+            spriteFixed([
               ".....GGGGGG.....",
-              "....GGYYYYGG....",
-              "...GGYSSSSYGG...",
-              "..GGYS....SYGG..",
-              "..GGYSSSSSSYGG..",
-              "...GGYYYYYYGG...",
-              "...GGG3333GGG...",
-              "..GG33333333GG..",
-              ".GG3333..3333GG.",
-              ".GG3333333333GG.",
-              "..GG33....33GG..",
-              "...G33..33..3G..",
-              "..GG..33..33GG..",
-              "...GG......GG...",
+              "...GGGGGGGGGG...",
+              "..GGGGGGGGGGGG..",
+              ".GGGGGGWWGGGGGG.",
+              ".GGGGGGWWGGGGGG.",
+              ".GGGGGGGGGGGGGG.",
+              "GGGGGGGGGGGGGGGG",
+              "GYYYGGGGGGGGYYYY",
+              "GYYYGGGGGGGGYYYY",
+              "GYYYGGGGGGGGYYYY",
+              "GGGGGGGGGGGGGGGG",
+              ".GGGGGGGGGGGGGG.",
+              "..GGGGGGGGGGGG..",
+              "...GG...GG..GG..",
+              "..GG..GG..GG....",
               "................",
-            ]),
+            ], 16, 16),
           ],
-          koopaShell: sprite([
+          koopaShell: spriteFixed([
             "................",
             "................",
             "....GGGGGGGG....",
-            "...GGYYYYYYGG...",
-            "..GGYYSSSSYYGG..",
-            "..GGYSSSSSSYGG..",
-            "..GGYSSSSSSYGG..",
-            "..GGYYSSSSYYGG..",
-            "...GGYYYYYYGG...",
-            "...GG333333GG...",
-            "....GG3333GG....",
+            "...GGGGGGGGGG...",
+            "..GGGWWGGWWGGG..",
+            "..GGGGGGGGGGGG..",
+            "...GGGGGGGGGG...",
+            "....GGGGGGGG....",
+            "...GGGGGGGGGG...",
+            "..GGGGGGGGGGGG..",
+            "...GGGGGGGGGG...",
+            "....GGGGGGGG....",
             ".....GGGGGG.....",
+            "...GG......GG...",
+            "..GG........GG..",
             "................",
-            "................",
-            "................",
-            "................",
-          ]),
-          piranha: sprite([
-            "......RRRR......",
-            ".....RYYYYR.....",
-            "....RYYSSYYR....",
-            "...RYYSSSSYYR...",
-            "...RYS....SYR...",
-            "...RYYSSSSYYR...",
-            "....RRYYYYRR....",
-            "...GGGGGGGGGG...",
-            "...GGGYYYYGGG...",
-            "...GGYYGGYYGG...",
-            "...GGGGGGGGGG...",
-            "....GGGYYGGG....",
-            "....GGG..GGG....",
-            ".....GG..GG.....",
-            ".....GG..GG.....",
-            "................",
-          ]),
+          ], 16, 16),
+          piranha: spriteFixed([
+            "...KKKKKKKKKK...",
+            "..KGGGGGGGGGGK..",
+            ".KGGWWGGGGWWGGK.",
+            ".KGGWWGGGGWWGGK.",
+            ".KGGGGGGGGGGGGK.",
+            ".KGGWKWWWWKWGGK.",
+            ".KGGWKKWWKKWGGK.",
+            ".KGGWKWWWWKWGGK.",
+            ".KGGGGGGGGGGGGK.",
+            "..KGGGGGGGGGGK..",
+            "...KKKKKKKKKK...",
+            ".....KK..KK.....",
+            ".....KK..KK.....",
+            ".....KK..KK.....",
+            ".....KK..KK.....",
+            ".....KK..KK.....",
+            ".....KK..KK.....",
+            ".....KK..KK.....",
+            ".....KK..KK.....",
+            ".....KK..KK.....",
+            ".....KK..KK.....",
+            ".....KK..KK.....",
+            ".....KK..KK.....",
+            ".....KK..KK.....",
+          ], 16, 24),
+          bossGoombaWalk: [
+            spriteFixed([
+              ".....................RRR........................",
+              "...................RRWWWR.......................",
+              "..................RWWWWWRR...RRR................",
+              "..................RWWWWWRR..RWWWR...............",
+              "..................RWWWWWRRRRWWWWR...............",
+              "...................RWWWWWWWWWWWR................",
+              ".........KKKKK.....RWWWWWWWWWWWR....KKKKK.......",
+              ".......KKBBBBBRK...RRWWWWWWWWWWR..KRBBBBBKK.....",
+              "......KBBBBBBBBBRK.RRWWWWWWWWWWR.KRBBBBBBBK.....",
+              ".....KBBBBBBBBBBBRKRRWWWWWWWWWWRKRBBBBBBBBBKK...",
+              "....KBBBKBBBBBBBBBRRRRRRRYRRRRRRRBBKBBBBBBBBK...",
+              "....KBBKBBBBBBBBBKRRRRRRYRYYRRRRKBBBKBBBBBBBK...",
+              "...KBBBKBBBBBBBBBKRRRRRRYRYYRRRRKBBBKKBBBBBBBK..",
+              "...KBBKBBBBBBBBBKRRRRRRRYYYYYRRRKBBBKKBBBBBBBK..",
+              "..KKBBKBBBBBBBBBKRRRRRRYRYYRRRRRKBBBKKBBBBBBBK..",
+              ".KBBBBKKBBBBBBBKKRRRRRRRRYYRRRRRKBBBKKBBBBBBBK..",
+              ".KBBBBKKBBBBBBBKKKRRRRRRRRRRRRKKBBBBKBBBBBBBK...",
+              ".KBBBBBKKBBBBBBKKKKKRRRRRRRRKKKKBBBBKBBBBBBBK...",
+              ".KBBBBBBKKKKKKKKYYYYRRRRRRRRYYYYKKKKKBBBBBBBK...",
+              "KKBBBBBBBBBBBBBKYRRRRRRRRRRRRRYKBBBBBBBBBBBBKK..",
+              "KBBBBBBBBBBBBBBBYRRRKRRRRKRRRRYKBBBBBBBBBBBBBK..",
+              "KBBBBBBBBBBBBBBBYRRKKRRRRKKRRRYKBBBBBBBBBBBBBK..",
+              "KBBBBBBBBBBBBBBBYRRWKRRRRRRKWRRYKBBBBBBBBBBBBK..",
+              ".KBBBBBBBBBBBBBBYRWKKRRRRRRKKWRRYKBBBBBBBBBBK...",
+              "..KKBBBBBBBBBBBBYRWKKWWWWWWKKWRRYKBBBBBBBBBB....",
+              "....KKKBBBBBBBBBYRRKKWWWWWWKKRRRYKBBBBBBBBKK....",
+              ".......KKKKKBBBBYRRKKWWWWKKRRRRYBBBBKKKKK.......",
+              "............KKKBRYYRRKKKKKKRRRRYBKKKK...........",
+              "..............KBRYYYYYYYYYYYYRRYK...............",
+              "..............KBRYYYYKRRKRRRRYYK................",
+              "..............KBRYYYKR..RRK...YK................",
+              "..............KBRYYYKR..RRK...YK................",
+            ], 48, 32),
+            spriteFixed([
+              ".....................RRR........................",
+              "...................RRWWWR.......................",
+              "..................RWWWWWRR...RRR................",
+              "..................RWWWWWRR..RWWWR...............",
+              "..................RWWWWWRRRRWWWWR...............",
+              "...................RWWWWWWWWWWWR................",
+              ".........KKKKK.....RWWWWWWWWWWWR....KKKKK.......",
+              ".......KKBBBBBRK...RRWWWWWWWWWWR..KRBBBBBKK.....",
+              "......KBBBBBBBBBRK.RRWWWWWWWWWWR.KRBBBBBBBK.....",
+              ".....KBBBBBBBBBBBRKRRWWWWWWWWWWRKRBBBBBBBBBKK...",
+              "....KBBBKBBBBBBBBBRRRRRRRYRRRRRRRBBKBBBBBBBBK...",
+              "....KBBKBBBBBBBBBKRRRRRRYRYYRRRRKBBBKBBBBBBBK...",
+              "...KBBBKBBBBBBBBBKRRRRRRYRYYRRRRKBBBKKBBBBBBBK..",
+              "...KBBKBBBBBBBBBKRRRRRRRYYYYYRRRKBBBKKBBBBBBBK..",
+              "..KKBBKBBBBBBBBBKRRRRRRYRYYRRRRRKBBBKKBBBBBBBK..",
+              ".KBBBBKKBBBBBBBKKRRRRRRRRYYRRRRRKBBBKKBBBBBBBK..",
+              ".KBBBBKKBBBBBBBKKKRRRRRRRRRRRRKKBBBBKBBBBBBBK...",
+              ".KBBBBBKKBBBBBBKKKKKRRRRRRRRKKKKBBBBKBBBBBBBK...",
+              ".KBBBBBBKKKKKKKKYYYYRRRRRRRRYYYYKKKKKBBBBBBBK...",
+              "KKBBBBBBBBBBBBBKYRRRRRRRRRRRRRYKBBBBBBBBBBBBKK..",
+              "KBBBBBBBBBBBBBBBYRRRKRRRRKRRRRYKBBBBBBBBBBBBBK..",
+              "KBBBBBBBBBBBBBBBYRRKKRRRRKKRRRYKBBBBBBBBBBBBBK..",
+              "KBBBBBBBBBBBBBBBYRRWKRRRRRRKWRRYKBBBBBBBBBBBBK..",
+              ".KBBBBBBBBBBBBBBYRWKKRRRRRRKKWRRYKBBBBBBBBBBK...",
+              "..KKBBBBBBBBBBBBYRWKKWWWWWWKKWRRYKBBBBBBBBBB....",
+              "....KKKBBBBBBBBBYRRKKWWWWWWKKRRRYKBBBBBBBBKK....",
+              ".......KKKKKBBBBYRRKKWWWWKKRRRRYBBBBKKKKK.......",
+              "............KKKBRYYRRKKKKKKRRRRYBKKKK...........",
+              "..............KBRYYYYYYYYYYYYRRYK...............",
+              "..............KBRYYYYKRRKRRRRYYK................",
+              "..............KBRYYYKRR.RRK...YK................",
+              "..............KBRYYYKRR.RRK...YK................",
+            ], 48, 32),
+          ],
           axe: sprite([
             "................",
             ".......YY.......",
@@ -626,34 +1057,235 @@
           ]),
         },
         items: {
-          mushroom: sprite([
+          mushroom: spriteFixed([
+            "......GGGG......",
+            "....GGYYYYGG....",
+            "...GRRYYRRRRRG..",
+            "..RRRRYYRRRRRRG.",
+            ".RRRRRYYRRRRRRRG",
+            ".RRRRYYYYYRRRRRG",
+            ".RRRRYYYYYRRRRRG",
+            "..RRRRRYYRRRRRG.",
+            "...RRRRYYRRRRRG.",
+            "....RRRRRRRRRG..",
+            ".....RRRRRRRG...",
+            "......RRRRRG....",
+            ".......RRRG.....",
+            "........RG......",
+            ".........G......",
             "................",
-            ".....RRRRRR.....",
-            "...RRYYYYYYRR...",
-            "..RYYYYYYYYYYR..",
-            ".RYYYSSSSSSYYYR.",
-            ".RYYSSSSSSSSYYR.",
-            ".RYYSSSSSSSSYYR.",
-            ".RYYYSSSSSSYYYR.",
-            "..RRRRRRRRRRRR..",
-            "...BBBBBBBBBB...",
-            "..BBB.BBBB.BBB..",
-            "..BBBBBBBBBBBB..",
-            "...BBB....BBB...",
-            "..BBBB....BBBB..",
-            "................",
-            "................",
-          ]),
+          ], 16, 16),
         },
       };
-      SPRITES.enemies.bossGoombaWalk = SPRITES.enemies.goombaWalk.map((frame) => scaleSprite(frame, 2));
-      SPRITES.enemies.bossGoombaIdle = scaleSprite(SPRITES.enemies.goombaWalk[0], 2);
       SPRITES.mario.big = {
-        idle: scaleSpriteXY(SPRITES.mario.idle, 1, 2),
-        walk: SPRITES.mario.walk.map((f) => scaleSpriteXY(f, 1, 2)),
-        jump: scaleSpriteXY(SPRITES.mario.jump, 1, 2),
-        skid: scaleSpriteXY(SPRITES.mario.skid, 1, 2),
+        idle: spriteFixed([
+          ".....RRRRR......",
+          "....RRRRRRRR....",
+          "....RRRRRRRR....",
+          "....EEEOOEE.....",
+          "...EEEEEOOEE....",
+          "...EEEEEOOEE....",
+          "...EWEEEOOEE....",
+          "...EEEEEEEE.....",
+          "....EEEEEE......",
+          "...YYBBYBBYY....",
+          "..YYYYBBBBBYY...",
+          "..YYBBBBBBBBBY..",
+          ".YYYBBBBBBBBBYY.",
+          ".YYYBBBBBBBBBYY.",
+          ".WWYBBBBBBBBBYWW",
+          ".WWYBBBBBBBBBYWW",
+          "..WBBBBBBBBBBBW.",
+          "..WBBBBBBBBBBBW.",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...RRR....RRR...",
+          "..RRRR....RRRR..",
+          "..RRRR....RRRR..",
+          ".RRRRR....RRRRR.",
+        ], 16, 32),
+        walk: [
+          spriteFixed([
+            ".....RRRRR......",
+            "....RRRRRRRR....",
+            "....RRRRRRRR....",
+            "....EEEOOEE.....",
+            "...EEEEEOOEE....",
+            "...EEEEEOOEE....",
+            "...EWEEEOOEE....",
+            "...EEEEEEEE.....",
+            "....EEEEEE......",
+            "...YYBBYBBYY....",
+            "..YYYYBBBBBYY...",
+            "..YYBBBBBBBBBY..",
+            ".YYYBBBBBBBBBYY.",
+            ".YYYBBBBBBBBBYY.",
+            ".WWYBBBBBBBBBYWW",
+            ".WWYBBBBBBBBBYWW",
+            "..WBBBBBBBBBBBW.",
+            "..WBBBBBBBBBBBW.",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...RRR....RRR...",
+            "..RRRR....RRRR..",
+            "..RRRR....RRRR..",
+            ".RRRRR....RRRRR.",
+          ], 16, 32),
+          spriteFixed([
+            ".....RRRRR......",
+            "....RRRRRRRR....",
+            "....RRRRRRRR....",
+            "....EEEOOEE.....",
+            "...EEEEEOOEE....",
+            "...EEEEEOOEE....",
+            "...EWEEEOOEE....",
+            "...EEEEEEEE.....",
+            "....EEEEEE......",
+            "...YYBBYBBYY....",
+            "..YYYYBBBBBYY...",
+            "..YYBBBBBBBBBY..",
+            ".YYYBBBBBBBBBYY.",
+            ".YYYBBBBBBBBBYY.",
+            ".WWYBBBBBBBBBYWW",
+            ".WWYBBBBBBBBBYWW",
+            "..WBBBBBBBBBBBW.",
+            "..WBBBBBBBBBBBW.",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "..RRR.....RRR...",
+            ".RRRR....RRRR...",
+            ".RRR.....RRRR...",
+            "..RRRR...RRRR...",
+          ], 16, 32),
+          spriteFixed([
+            ".....RRRRR......",
+            "....RRRRRRRR....",
+            "....RRRRRRRR....",
+            "....EEEOOEE.....",
+            "...EEEEEOOEE....",
+            "...EEEEEOOEE....",
+            "...EWEEEOOEE....",
+            "...EEEEEEEE.....",
+            "....EEEEEE......",
+            "...YYBBYBBYY....",
+            "..YYYYBBBBBYY...",
+            "..YYBBBBBBBBBY..",
+            ".YYYBBBBBBBBBYY.",
+            ".YYYBBBBBBBBBYY.",
+            ".WWYBBBBBBBBBYWW",
+            ".WWYBBBBBBBBBYWW",
+            "..WBBBBBBBBBBBW.",
+            "..WBBBBBBBBBBBW.",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...BBBBBBBBBBB..",
+            "...RRR.....RRR..",
+            "...RRRR....RRRR.",
+            "..RRRR.....RRR..",
+            ".RRRR....RRRR...",
+          ], 16, 32),
+        ],
+        jump: spriteFixed([
+          ".....RRRRR......",
+          "....RRRRRRRR....",
+          "....RRRRRRRR....",
+          "....EEEOOEE.....",
+          "...EEEEEOOEE....",
+          "...EEEEEOOEE....",
+          "...EWEEEOOEE....",
+          "...EEEEEEEE.....",
+          "....EEEEEE......",
+          "...YYBBYBBYY....",
+          "..YYYYBBBBBYY...",
+          "..YYBBBBBBBBBY..",
+          ".YYYBBBBBBBBBYY.",
+          ".YYYBBBBBBBBBYY.",
+          ".WWYBBBBBBBBBYWW",
+          ".WWYBBBBBBBBBYWW",
+          "..WBBBBBBBBBBBW.",
+          "..WBBBBBBBBBBBW.",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...RRRRRRRRRR...",
+          "..RRRRRRRRRRRR..",
+          "...RRRRRRRRRR...",
+          "....RRRRRRRR....",
+        ], 16, 32),
+        skid: spriteFixed([
+          ".....RRRRR......",
+          "....RRRRRRRR....",
+          "....RRRRRRRR....",
+          "....EEEOOEE.....",
+          "...EEEEEOOEE....",
+          "...EEEEEOOEE....",
+          "...EWEEEOOEE....",
+          "...EEEEEEEE.....",
+          "....EEEEEE......",
+          "...YYBBYBBYY....",
+          "..YYYYBBBBBYY...",
+          "..YYBBBBBBBBBY..",
+          ".YYYBBBBBBBBBYY.",
+          ".YYYBBBBBBBBBYY.",
+          ".WWYBBBBBBBBBYWW",
+          ".WWYBBBBBBBBBYWW",
+          "..WBBBBBBBBBBBW.",
+          "..WBBBBBBBBBBBW.",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "...BBBBBBBBBBB..",
+          "..RRRR....RRR...",
+          ".RRRR.....RRRR..",
+          ".RRR......RRRR..",
+          "..RRRR....RRRR..",
+        ], 16, 32),
       };
+      SPRITES.enemies.bossGoombaIdle = SPRITES.enemies.bossGoombaWalk[0];
 
       class InputHandler {
         constructor() {
@@ -667,10 +1299,9 @@
             start: false,
             select: false,
           };
-          this.isMobileControl = this.detectMobileControl();
-          this.mobileTilt = 0;
-          this.mobileGyroActive = false;
-          this.orientationHandler = (e) => this.onDeviceOrientation(e);
+          this.isIOS = isIOSDevice;
+          this.isMobileControl = this.isIOS;
+          this.useVirtualPad = this.isIOS;
           this.previous = { ...this.keys };
           this.jumpPressed = false;
           this.jumpHeld = false;
@@ -678,80 +1309,150 @@
           this.downPressed = false;
           this.startPressed = false;
           this.onUserAction = null;
+          this.moveDir = 0;
+          this.moveHoldFrames = 0;
+          this.autoDash = false;
+          this.dashThresholdFrames = 12;
+          this.pointerKeyMap = new Map();
+          this.touchKeyMap = new Map();
+          this.keyToButton = new Map();
+          this.keyToButton.set("left", btnLeft);
+          this.keyToButton.set("right", btnRight);
+          this.keyToButton.set("jump", btnJump);
         }
 
         init() {
           document.addEventListener("keydown", (e) => this.onKey(e, true));
           document.addEventListener("keyup", (e) => this.onKey(e, false));
-          if (window.PointerEvent) {
-            canvas.addEventListener("pointerdown", (e) => this.onPointerDown(e), { passive: false });
-            window.addEventListener("pointerup", (e) => this.onPointerUp(e), { passive: false });
-            window.addEventListener("pointercancel", (e) => this.onPointerUp(e), { passive: false });
-          } else {
-            canvas.addEventListener("touchstart", (e) => this.onTouchStart(e), { passive: false });
-            window.addEventListener("touchend", (e) => this.onTouchEnd(e), { passive: false });
-            window.addEventListener("touchcancel", (e) => this.onTouchEnd(e), { passive: false });
+          document.addEventListener("visibilitychange", () => {
+            if (document.hidden) this.releaseAllInputs();
+          });
+          window.addEventListener("blur", () => this.releaseAllInputs());
+          if (!this.useVirtualPad) return;
+          this.bindVirtualButton(btnLeft, "left");
+          this.bindVirtualButton(btnRight, "right");
+          this.bindVirtualButton(btnJump, "jump");
+          window.addEventListener("pointerup", (e) => this.onGlobalPointerEnd(e), { passive: false });
+          window.addEventListener("pointercancel", (e) => this.onGlobalPointerEnd(e), { passive: false });
+          window.addEventListener("touchend", (e) => this.onGlobalTouchEnd(e), { passive: false });
+          window.addEventListener("touchcancel", (e) => this.onGlobalTouchEnd(e), { passive: false });
+        }
+
+        bindVirtualButton(button, key) {
+          if (!button) return;
+          button.addEventListener("pointerdown", (e) => this.onButtonPointerDown(e, key, button), { passive: false });
+          button.addEventListener("pointerup", (e) => this.onButtonPointerEnd(e, key), { passive: false });
+          button.addEventListener("pointercancel", (e) => this.onButtonPointerEnd(e, key), { passive: false });
+          button.addEventListener("touchstart", (e) => this.onButtonTouchStart(e, key, button), { passive: false });
+          button.addEventListener("touchend", (e) => this.onButtonTouchEnd(e, key), { passive: false });
+          button.addEventListener("touchcancel", (e) => this.onButtonTouchEnd(e, key), { passive: false });
+          button.addEventListener("contextmenu", (e) => e.preventDefault());
+        }
+
+        onButtonPointerDown(e, key, button) {
+          if (!this.useVirtualPad) return;
+          if (e.pointerType === "touch") return;
+          if (e.pointerType === "mouse" && e.button !== 0) return;
+          if (button.setPointerCapture) {
+            try { button.setPointerCapture(e.pointerId); } catch (_) {}
           }
-        }
-
-        detectMobileControl() {
-          const coarsePointer = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
-          const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-          return coarsePointer || hasTouch;
-        }
-
-        onPointerDown(e) {
-          if (!this.isMobileControl) return;
-          if (e.pointerType === "mouse") return;
-          this.enableMobileGyro();
-          this.keys.jump = true;
+          this.pointerKeyMap.set(e.pointerId, key);
+          this.syncVirtualPadKeys();
           if (this.onUserAction) this.onUserAction();
           e.preventDefault();
         }
 
-        onPointerUp(e) {
-          if (!this.isMobileControl) return;
-          if (e.pointerType === "mouse") return;
-          this.keys.jump = false;
+        onButtonPointerEnd(e, keyHint) {
+          if (!this.useVirtualPad) return;
+          if (e.pointerType === "touch") return;
+          this.releasePointer(e.pointerId, keyHint);
           e.preventDefault();
         }
 
-        onTouchStart(e) {
-          if (!this.isMobileControl) return;
-          this.enableMobileGyro();
-          this.keys.jump = true;
+        onGlobalPointerEnd(e) {
+          if (!this.useVirtualPad) return;
+          if (e.pointerType === "touch") return;
+          this.releasePointer(e.pointerId);
+        }
+
+        onButtonTouchStart(e, key, button) {
+          if (!this.useVirtualPad) return;
+          for (const t of e.changedTouches) this.touchKeyMap.set(t.identifier, key);
+          this.syncVirtualPadKeys();
+          if (button) button.classList.add("active");
           if (this.onUserAction) this.onUserAction();
           e.preventDefault();
         }
 
-        onTouchEnd(e) {
-          if (!this.isMobileControl) return;
-          this.keys.jump = false;
+        onButtonTouchEnd(e, keyHint) {
+          if (!this.useVirtualPad) return;
+          for (const t of e.changedTouches) this.touchKeyMap.delete(t.identifier);
+          if (e.touches && e.touches.length === 0) {
+            this.touchKeyMap.clear();
+            this.pointerKeyMap.clear();
+          }
+          this.syncVirtualPadKeys(keyHint);
           e.preventDefault();
         }
 
-        enableMobileGyro() {
-          if (!this.isMobileControl || this.mobileGyroActive) return;
-          const attach = () => {
-            window.addEventListener("deviceorientation", this.orientationHandler, true);
-            this.mobileGyroActive = true;
+        onGlobalTouchEnd(e) {
+          if (!this.useVirtualPad) return;
+          for (const t of e.changedTouches) this.touchKeyMap.delete(t.identifier);
+          if (e.touches && e.touches.length === 0) {
+            this.touchKeyMap.clear();
+            this.pointerKeyMap.clear();
+          }
+          this.syncVirtualPadKeys();
+        }
+
+        releasePointer(pointerId, keyHint = null) {
+          const mappedKey = this.pointerKeyMap.get(pointerId) || keyHint;
+          this.pointerKeyMap.delete(pointerId);
+          this.syncVirtualPadKeys(mappedKey);
+        }
+
+        syncVirtualPadKeys() {
+          if (!this.useVirtualPad) return;
+          const has = (target) => {
+            for (const k of this.pointerKeyMap.values()) if (k === target) return true;
+            for (const k of this.touchKeyMap.values()) if (k === target) return true;
+            return false;
           };
-          if (typeof DeviceOrientationEvent === "undefined") return;
-          if (typeof DeviceOrientationEvent.requestPermission === "function") {
-            DeviceOrientationEvent.requestPermission()
-              .then((res) => {
-                if (res === "granted") attach();
-              })
-              .catch(() => {});
-            return;
-          }
-          attach();
+          this.keys.left = has("left");
+          this.keys.right = has("right");
+          this.keys.jump = has("jump");
+          btnLeft.classList.toggle("active", this.keys.left);
+          btnRight.classList.toggle("active", this.keys.right);
+          btnJump.classList.toggle("active", this.keys.jump);
         }
 
-        onDeviceOrientation(e) {
-          if (!this.isMobileControl) return;
-          if (typeof e.gamma !== "number") return;
-          this.mobileTilt = Math.max(-45, Math.min(45, e.gamma));
+        releaseAllPointers() {
+          this.pointerKeyMap.clear();
+          this.touchKeyMap.clear();
+          this.keys.left = false;
+          this.keys.right = false;
+          this.keys.jump = false;
+          for (const btn of this.keyToButton.values()) {
+            if (btn) btn.classList.remove("active");
+          }
+        }
+
+        releaseAllInputs() {
+          this.releaseAllPointers();
+          this.keys.up = false;
+          this.keys.down = false;
+          this.keys.start = false;
+          this.keys.select = false;
+          this.keys.fire = false;
+          this.moveDir = 0;
+          this.moveHoldFrames = 0;
+          this.autoDash = false;
+          this.jumpPressed = false;
+          this.jumpHeld = false;
+          this.upPressed = false;
+          this.downPressed = false;
+          this.startPressed = false;
+          this.previous = { ...this.keys };
         }
 
         onKey(e, pressed) {
@@ -770,9 +1471,6 @@
             ArrowDown: "down",
             Space: "jump",
             KeyX: "jump",
-            ShiftLeft: "fire",
-            ShiftRight: "fire",
-            KeyZ: "fire",
             Enter: "start",
             Tab: "select",
           };
@@ -780,12 +1478,18 @@
         }
 
         update() {
-          if (this.isMobileControl) {
-            const deadZone = 7;
-            this.keys.left = this.mobileTilt < -deadZone;
-            this.keys.right = this.mobileTilt > deadZone;
-            this.keys.fire = false;
+          const currentDir = this.keys.right && !this.keys.left ? 1 : this.keys.left && !this.keys.right ? -1 : 0;
+          if (currentDir === 0) {
+            this.moveDir = 0;
+            this.moveHoldFrames = 0;
+          } else if (this.moveDir === currentDir) {
+            this.moveHoldFrames++;
+          } else {
+            this.moveDir = currentDir;
+            this.moveHoldFrames = 1;
           }
+          this.autoDash = this.moveHoldFrames >= this.dashThresholdFrames;
+          this.keys.fire = this.autoDash;
           this.jumpPressed = this.keys.jump && !this.previous.jump;
           this.jumpHeld = this.keys.jump;
           this.upPressed = this.keys.up && !this.previous.up;
@@ -1371,7 +2075,7 @@
         }
 
         handleHorizontalInput(input) {
-          const dashActive = input.keys.fire;
+          const dashActive = input.autoDash;
           const pressingRight = input.keys.right && !input.keys.left;
           const pressingLeft = input.keys.left && !input.keys.right;
 
@@ -1397,7 +2101,7 @@
           if (!this.grounded || !input.jumpPressed) return false;
           const speed = Math.abs(this.vx);
           const running = speed > CONFIG.WALK_MAX * 0.9;
-          const dashJump = input.keys.fire && speed > 0.5;
+          const dashJump = input.autoDash && speed > 0.5;
           if (dashJump) this.vy = CONFIG.JUMP_VEL_DASH;
           else this.vy = running ? CONFIG.JUMP_VEL_RUN : CONFIG.JUMP_VEL_WALK;
           this.grounded = false;
@@ -1625,7 +2329,8 @@
           this.baseY = tileY * CONFIG.TILE_SIZE;
           this.y = this.baseY;
           this.width = 16;
-          this.height = 16;
+          this.height = 24;
+          this.dangerHeight = 12;
           this.hitboxInset = 1;
           this.active = true;
           this.phase = Math.random() * Math.PI * 2;
@@ -1636,7 +2341,7 @@
             left: this.x + this.hitboxInset,
             right: this.x + this.width - 1 - this.hitboxInset,
             top: this.y,
-            bottom: this.y + this.height - 1,
+            bottom: this.y + this.dangerHeight - 1,
           };
         }
 
@@ -1663,7 +2368,7 @@
 
       class BossGoomba extends EnemyWalker {
         constructor(tileX, tileY) {
-          super("boss_goomba", tileX, tileY, 32, 32, 0.35);
+          super("boss_goomba", tileX, tileY, 40, 32, 0.35);
         }
 
         canBeStomped() {
@@ -1687,7 +2392,7 @@
 
         render(targetCtx, cameraX) {
           if (!this.active) return;
-          const drawX = this.x - cameraX;
+          const drawX = this.x - cameraX - 4;
           const drawY = this.y;
           const frames = SPRITES.enemies.bossGoombaWalk;
           drawIndexedSprite(targetCtx, frames[this.animFrame], MARIO_PALETTE, drawX, drawY, this.vx > 0);
@@ -2066,6 +2771,7 @@
       }
 
       function startGame() {
+        input.releaseAllInputs();
         state.score = 0;
         state.coins = 0;
         state.lives = CONFIG.START_LIVES;
@@ -2089,6 +2795,7 @@
       }
 
       function backToTitle() {
+        input.releaseAllInputs();
         state.mode = "title";
         state.titleSelection = 0;
         state.levelIndex = 0;
@@ -2298,24 +3005,26 @@
         ctx.fillRect(panelX, panelY + panelH - 1, panelW, 1);
 
         if (input.isMobileControl) {
-          drawNesTextShadow(ctx, "MOVE TILT L/R", panelX + 6, 40, "#ffffff", 1);
-          drawNesTextShadow(ctx, "JUMP TAP SCREEN", panelX + 6, 52, "#ffffff", 1);
+          drawNesTextShadow(ctx, "MOVE PAD LEFT/RIGHT", panelX + 6, 40, "#ffffff", 1);
+          drawNesTextShadow(ctx, "HOLD TO AUTO DASH", panelX + 6, 48, "#ffffff", 1);
+          drawNesTextShadow(ctx, "JUMP RED BUTTON", panelX + 6, 56, "#ffffff", 1);
           return;
         }
         drawNesTextShadow(ctx, "MOVE ARROWS", panelX + 6, 40, "#ffffff", 1);
-        drawNesTextShadow(ctx, "DASH SHIFT/Z", panelX + 6, 48, "#ffffff", 1);
+        drawNesTextShadow(ctx, "HOLD TO AUTO DASH", panelX + 6, 48, "#ffffff", 1);
         drawNesTextShadow(ctx, "JUMP SPACE/X", panelX + 6, 56, "#ffffff", 1);
       }
 
       function renderTitle() {
         ctx.fillStyle = "#000000";
         ctx.fillRect(0, 0, CONFIG.INTERNAL_WIDTH, CONFIG.INTERNAL_HEIGHT);
+        const menu1Color = state.titleSelection === 0 ? "#ffffff" : "#8d8d8d";
+        const menu2Color = state.titleSelection === 1 ? "#ffffff" : "#8d8d8d";
         drawNesText(ctx, "HYPER ORIMA BROS", 52, 64, "#ffffff");
         drawNesText(ctx, "TOP-" + pad(state.score, 6), 72, 88, "#ffffff");
-        drawNesText(ctx, "1 PLAYER GAME", 76, 116, "#ffffff");
-        drawNesText(ctx, "2 PLAYER GAME", 76, 132, "#ffffff");
-        drawNesText(ctx, "M", 60, state.titleSelection === 0 ? 116 : 132, "#ffffff");
-        drawNesText(ctx, input.isMobileControl ? "TAP TO START" : "ENTER OR SPACE TO START", input.isMobileControl ? 84 : 24, 164, "#ffffff");
+        drawNesText(ctx, "1 PLAYER GAME", 76, 116, menu1Color);
+        drawNesText(ctx, "2 PLAYER GAME", 76, 132, menu2Color);
+        drawNesText(ctx, input.isMobileControl ? "PRESS JUMP TO START" : "ENTER OR SPACE TO START", input.isMobileControl ? 52 : 24, 164, "#ffffff");
         drawNesText(ctx, "2026 DAISUKENOSUKE", 48, 196, "#ffffff");
       }
 

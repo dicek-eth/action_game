@@ -1,9 +1,49 @@
 # HYPER ORIMA BROS
 
-Browser game inspired by classic platformers.
+ブラウザで遊べる 2D アクションゲームです。  
+`HTML + CSS + Vanilla JavaScript` の単一ページ構成で実装しています。
 
-## Local Run
-Open `index.html` in your browser.
+## 公開URL
+- 固定URL（毎回同じ）: https://hyper-orima-bros.vercel.app
 
-## Deploy (Vercel)
-This project is static HTML/JS and can be deployed directly on Vercel.
+## ゲーム概要
+- 4ステージ構成: `1-1`, `1-2`, `1-3`, `1-4`
+- タイトル -> ステージ開始 -> プレイ -> クリア -> 次ステージ
+- `1-4` はボスエリアで、斧取得がクリア条件
+- 残機制: 初期 `5`、死亡で `-1`、`0` でゲームオーバー
+- キノコ取得で Big 状態（1回被弾で Small に戻る）
+
+## 操作方法
+### PC
+- 移動: `←` `→`
+- ジャンプ: `Space` または `X`
+- ダッシュ: 方向入力を短時間長押しで自動発動（Shift不要）
+
+### iPhone (Safari)
+- 画面上 `2/3`: ゲーム画面
+- 画面下 `1/3`: 仮想PAD
+  - 左側: `◀` `▶`（押している間だけ移動）
+  - 右側: `JUMP` ボタン
+- ダッシュ: 左右ボタンを短時間長押しで自動発動
+
+## ローカル起動
+1. `index.html` をブラウザで開く
+
+## デプロイ（Vercel）
+このリポジトリは静的配信で動作します。
+
+1. Vercelにログイン
+2. プロジェクトをリンク
+3. `vercel --prod` で本番反映
+
+## 自動デプロイ（GitHub連携）
+GitHubリポジトリとVercelプロジェクトを連携すると、`main` 更新時に自動で本番反映されます。
+
+- 連携コマンド例: `vercel git connect <github-repo-url>`
+
+## 主な技術要素
+- Canvas 2D 描画
+- タイルマップ/当たり判定
+- エンティティ管理（プレイヤー/敵/アイテム）
+- Web Audio API による簡易SE/BGM
+
