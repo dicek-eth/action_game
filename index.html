@@ -1,0 +1,2397 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Super Mario Phase 3+4</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: monospace;
+      touch-action: none;
+    }
+
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      background: #5c94fc;
+      box-shadow: 0 0 0 2px #111;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="256" height="240"></canvas>
+  <script>
+    (() => {
+      "use strict";
+
+      const CONFIG = {
+        INTERNAL_WIDTH: 256,
+        INTERNAL_HEIGHT: 240,
+        TILE_SIZE: 16,
+        FPS: 60.0988,
+        GRAVITY_HOLD: 0.2,
+        GRAVITY_RELEASE: 0.7,
+        MAX_FALL_SPEED: 4.5,
+        WALK_ACCEL: 0.09375,
+        WALK_MAX: 1.5625,
+        RUN_MAX: 2.5,
+        DECEL: 0.0625,
+        SKID_DECEL: 0.15625,
+        JUMP_VEL_WALK: -4.0,
+        JUMP_VEL_RUN: -5.0,
+        JUMP_VEL_DASH: -5.45,
+        GOOMBA_SPEED: 0.5,
+        STOMP_BOUNCE: -3.5,
+        START_LIVES: 5,
+      };
+
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      function resizeCanvas() {
+        const sx = Math.floor(window.innerWidth / CONFIG.INTERNAL_WIDTH);
+        const sy = Math.floor(window.innerHeight / CONFIG.INTERNAL_HEIGHT);
+        const scale = Math.max(1, Math.min(sx, sy));
+        canvas.style.width = `${CONFIG.INTERNAL_WIDTH * scale}px`;
+        canvas.style.height = `${CONFIG.INTERNAL_HEIGHT * scale}px`;
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+
+      const FONT = {
+        " ": [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+        "0": [0x3c,0x66,0x6e,0x76,0x66,0x66,0x3c,0x00],
+        "1": [0x18,0x38,0x18,0x18,0x18,0x18,0x7e,0x00],
+        "2": [0x3c,0x66,0x06,0x1c,0x30,0x66,0x7e,0x00],
+        "3": [0x3c,0x66,0x06,0x1c,0x06,0x66,0x3c,0x00],
+        "4": [0x0c,0x1c,0x3c,0x6c,0x7e,0x0c,0x0c,0x00],
+        "5": [0x7e,0x60,0x7c,0x06,0x06,0x66,0x3c,0x00],
+        "6": [0x1c,0x30,0x60,0x7c,0x66,0x66,0x3c,0x00],
+        "7": [0x7e,0x66,0x06,0x0c,0x18,0x18,0x18,0x00],
+        "8": [0x3c,0x66,0x66,0x3c,0x66,0x66,0x3c,0x00],
+        "9": [0x3c,0x66,0x66,0x3e,0x06,0x0c,0x38,0x00],
+        "A": [0x18,0x3c,0x66,0x66,0x7e,0x66,0x66,0x00],
+        "B": [0x7c,0x66,0x66,0x7c,0x66,0x66,0x7c,0x00],
+        "C": [0x3c,0x66,0x60,0x60,0x60,0x66,0x3c,0x00],
+        "D": [0x78,0x6c,0x66,0x66,0x66,0x6c,0x78,0x00],
+        "E": [0x7e,0x60,0x60,0x7c,0x60,0x60,0x7e,0x00],
+        "F": [0x7e,0x60,0x60,0x7c,0x60,0x60,0x60,0x00],
+        "G": [0x3c,0x66,0x60,0x6e,0x66,0x66,0x3c,0x00],
+        "H": [0x66,0x66,0x66,0x7e,0x66,0x66,0x66,0x00],
+        "I": [0x3c,0x18,0x18,0x18,0x18,0x18,0x3c,0x00],
+        "J": [0x1e,0x0c,0x0c,0x0c,0x0c,0x6c,0x38,0x00],
+        "K": [0x66,0x6c,0x78,0x70,0x78,0x6c,0x66,0x00],
+        "L": [0x60,0x60,0x60,0x60,0x60,0x60,0x7e,0x00],
+        "M": [0x63,0x77,0x7f,0x6b,0x63,0x63,0x63,0x00],
+        "N": [0x66,0x76,0x7e,0x7e,0x6e,0x66,0x66,0x00],
+        "O": [0x3c,0x66,0x66,0x66,0x66,0x66,0x3c,0x00],
+        "P": [0x7c,0x66,0x66,0x7c,0x60,0x60,0x60,0x00],
+        "Q": [0x3c,0x66,0x66,0x66,0x6e,0x3c,0x0e,0x00],
+        "R": [0x7c,0x66,0x66,0x7c,0x78,0x6c,0x66,0x00],
+        "S": [0x3c,0x66,0x60,0x3c,0x06,0x66,0x3c,0x00],
+        "T": [0x7e,0x5a,0x18,0x18,0x18,0x18,0x3c,0x00],
+        "U": [0x66,0x66,0x66,0x66,0x66,0x66,0x3c,0x00],
+        "V": [0x66,0x66,0x66,0x66,0x66,0x3c,0x18,0x00],
+        "W": [0x63,0x63,0x63,0x6b,0x7f,0x77,0x63,0x00],
+        "X": [0x66,0x66,0x3c,0x18,0x3c,0x66,0x66,0x00],
+        "Y": [0x66,0x66,0x66,0x3c,0x18,0x18,0x3c,0x00],
+        "Z": [0x7e,0x06,0x0c,0x18,0x30,0x60,0x7e,0x00],
+        "+": [0x00,0x18,0x18,0x7e,0x18,0x18,0x00,0x00],
+        "-": [0x00,0x00,0x00,0x7e,0x00,0x00,0x00,0x00],
+        "/": [0x06,0x0c,0x18,0x30,0x60,0xc0,0x80,0x00],
+        ":": [0x00,0x18,0x18,0x00,0x00,0x18,0x18,0x00]
+      };
+
+      function drawNesText(targetCtx, text, x, y, color = "#ffffff", scale = 1) {
+        const upper = String(text).toUpperCase();
+        targetCtx.fillStyle = color;
+        for (let i = 0; i < upper.length; i++) {
+          const glyph = FONT[upper[i]] || FONT[" "];
+          for (let row = 0; row < 8; row++) {
+            const bits = glyph[row];
+            for (let col = 0; col < 8; col++) {
+              if ((bits >> (7 - col)) & 1) {
+                targetCtx.fillRect(
+                  x + i * 8 * scale + col * scale,
+                  y + row * scale,
+                  scale,
+                  scale
+                );
+              }
+            }
+          }
+        }
+      }
+
+      function drawNesTextShadow(targetCtx, text, x, y, color = "#ffffff", scale = 1) {
+        drawNesText(targetCtx, text, x + scale, y + scale, "#000000", scale);
+        drawNesText(targetCtx, text, x, y, color, scale);
+      }
+
+      const PIXEL_MAP = { ".": 0, "R": 1, "S": 2, "B": 3, "Y": 4, "G": 5, "T": 6, "3": 3 };
+      function sprite(rows) {
+        return rows.map((row) => row.split("").map((ch) => PIXEL_MAP[ch] || 0));
+      }
+
+      function drawIndexedSprite(targetCtx, pixels, palette, x, y, flipX = false) {
+        for (let py = 0; py < pixels.length; py++) {
+          const row = pixels[py];
+          for (let px = 0; px < row.length; px++) {
+            const idx = row[px];
+            if (idx === 0) continue;
+            targetCtx.fillStyle = palette[idx];
+            const sx = flipX ? x + (row.length - 1 - px) : x + px;
+            targetCtx.fillRect(Math.floor(sx), Math.floor(y + py), 1, 1);
+          }
+        }
+      }
+
+      function scaleSprite(pixels, factor) {
+        const out = [];
+        for (let y = 0; y < pixels.length; y++) {
+          const row = [];
+          for (let x = 0; x < pixels[y].length; x++) {
+            for (let i = 0; i < factor; i++) row.push(pixels[y][x]);
+          }
+          for (let j = 0; j < factor; j++) out.push([...row]);
+        }
+        return out;
+      }
+
+      function scaleSpriteXY(pixels, sx, sy) {
+        const out = [];
+        for (let y = 0; y < pixels.length; y++) {
+          const row = [];
+          for (let x = 0; x < pixels[y].length; x++) {
+            for (let i = 0; i < sx; i++) row.push(pixels[y][x]);
+          }
+          for (let j = 0; j < sy; j++) out.push([...row]);
+        }
+        return out;
+      }
+
+      function drawSpriteMask(targetCtx, pixels, x, y, color = "#101010", flipX = false) {
+        targetCtx.fillStyle = color;
+        for (let py = 0; py < pixels.length; py++) {
+          const row = pixels[py];
+          for (let px = 0; px < row.length; px++) {
+            if (row[px] === 0) continue;
+            const sx = flipX ? x + (row.length - 1 - px) : x + px;
+            targetCtx.fillRect(Math.floor(sx), Math.floor(y + py), 1, 1);
+          }
+        }
+      }
+
+      function drawStyledSprite(targetCtx, pixels, palette, x, y, flipX = false) {
+        drawSpriteMask(targetCtx, pixels, x - 1, y, "#111111", flipX);
+        drawSpriteMask(targetCtx, pixels, x + 1, y, "#111111", flipX);
+        drawSpriteMask(targetCtx, pixels, x, y - 1, "#111111", flipX);
+        drawSpriteMask(targetCtx, pixels, x, y + 1, "#111111", flipX);
+        drawIndexedSprite(targetCtx, pixels, palette, x, y, flipX);
+      }
+
+      const MARIO_PALETTE = {
+        1: "#b53120",
+        2: "#f7d7b5",
+        3: "#7b3f10",
+        4: "#f2c63d",
+        5: "#27ae2a",
+        6: "#5a2c0b",
+      };
+
+      const SPRITES = {
+        mario: {
+          idle: sprite([
+            "................",
+            ".....RRRRR......",
+            "....RRRRRRRR....",
+            "...RRSSSSSSRR...",
+            "...RS333S33SR...",
+            "...R333SS333R...",
+            "...RR333333RR...",
+            "....R333333R....",
+            "...RR33RR33RR...",
+            "..RR33333333RR..",
+            "..R3333333333R..",
+            "..R3333RR3333R..",
+            "...R33R..R33R...",
+            "...R33....33R...",
+            "...333....333...",
+            "................",
+          ]),
+          walk: [
+            sprite([
+              "................",
+              ".....RRRRR......",
+              "....RRRRRRRR....",
+              "...RRSSSSSSRR...",
+              "...RS333S33SR...",
+              "...R333SS333R...",
+              "...RR333333RR...",
+              "....R333333R....",
+              "...RR33RR33RR...",
+              "..RR33333333RR..",
+              "..R3333333333R..",
+              "..R3333RR3333R..",
+              "...R33R..R333...",
+              "...R33....33R...",
+              "..333......33...",
+              "................",
+            ]),
+            sprite([
+              "................",
+              ".....RRRRR......",
+              "....RRRRRRRR....",
+              "...RRSSSSSSRR...",
+              "...RS333S33SR...",
+              "...R333SS333R...",
+              "...RR333333RR...",
+              "....R333333R....",
+              "...RR33RR33RR...",
+              "..RR33333333RR..",
+              "..R3333333333R..",
+              "..R3333RR3333R..",
+              "....R33..33R....",
+              "...R333..333R...",
+              "..33........33..",
+              "................",
+            ]),
+            sprite([
+              "................",
+              ".....RRRRR......",
+              "....RRRRRRRR....",
+              "...RRSSSSSSRR...",
+              "...RS333S33SR...",
+              "...R333SS333R...",
+              "...RR333333RR...",
+              "....R333333R....",
+              "...RR33RR33RR...",
+              "..RR33333333RR..",
+              "..R3333333333R..",
+              "..R3333RR3333R..",
+              "...R333..R33R...",
+              "..R33....3333...",
+              "...33....33.....",
+              "................",
+            ]),
+          ],
+          jump: sprite([
+            "................",
+            ".....RRRRR......",
+            "....RRRRRRRR....",
+            "...RRSSSSSSRR...",
+            "...RS333S33SR...",
+            "...R333SS333R...",
+            "...RR333333RR...",
+            "...RR333333RR...",
+            "..RR333RR333RR..",
+            "..R3333333333R..",
+            "..R3333RR3333R..",
+            "...R333333333...",
+            "..R333R....R33..",
+            "..R33......33R..",
+            "...33......33...",
+            "................",
+          ]),
+          skid: sprite([
+            "................",
+            ".....RRRRR......",
+            "....RRRRRRRR....",
+            "...RRSSSSSSRR...",
+            "...RS333S33SR...",
+            "...R333SS333R...",
+            "...RR333333RR...",
+            "....R333333R....",
+            "..RR33333333RR..",
+            ".RR3333333333R..",
+            ".R33333333333R..",
+            "..R3333RR3333R..",
+            "...R333R..333R..",
+            "....33R...333...",
+            "...333.....33...",
+            "................",
+          ]),
+        },
+        tiles: {
+          ground: sprite([
+            "BBBBBBBBBBBBBBBB",
+            "BTTBBBBTTBBBBTTB",
+            "BBBBTTBBBBTTBBBB",
+            "BBTTBBBBBBBBTTBB",
+            "BTTBBBBTTBBBBBTT",
+            "BBBBBBBBBBBBBBBB",
+            "BBTTBBBBTTBBBBBB",
+            "BBBBTTBBBBBBTTBB",
+            "BTTBBBBBBBBBBTTB",
+            "BBBBBBBBTTBBBBBB",
+            "BBTTBBBBBBBBTTBB",
+            "BBBBTTBBBBTTBBBB",
+            "BTTBBBBBBBBBBTTB",
+            "BTTBBBBTTBBBBTTB",
+            "BBBBBBBBBBBBBBBB",
+            "BBTTBBBBTTBBBBBB",
+            "BBBBBBBBBBBBBBBB",
+          ]),
+          block: sprite([
+            "3333333333333333",
+            "3YYYYYYYYYYYYYY3",
+            "3YBBBBBBBBBBBBY3",
+            "3YB3333333333BY3",
+            "3YB3BBBBBBB3BY3",
+            "3YB3B33333B3BY3",
+            "3YB3B3BBB3B3BY3",
+            "3YB3B33333B3BY3",
+            "3YB3BBBBBBB3BY3",
+            "3YB3333333333BY3",
+            "3YB3BBBBBBB3BY3",
+            "3YB3B33333B3BY3",
+            "3YB3B3BBB3B3BY3",
+            "3YB3B33333B3BY3",
+            "3YBBBBBBBBBBBBY3",
+            "3YYYYYYYYYYYYYY3",
+            "3333333333333333",
+          ]),
+          question: sprite([
+            "YYYYYYYYYYYYYYYY",
+            "YBBBBBBBBBBBBBBY",
+            "YBYYYYYYYYYYYYBY",
+            "YBYYBBBBBBBBYYBY",
+            "YBYYBYYYYYYBYYBY",
+            "YBYYBYBBBBYBYYBY",
+            "YBYYYYBYYBYYYYBY",
+            "YBYYYYYYYYYYYYBY",
+            "YBYYBBBBBBBBYYBY",
+            "YBYYBYYYYYYBYYBY",
+            "YBYYBYBBBBYBYYBY",
+            "YBYYYYBYYBYYYYBY",
+            "YBYYYYYYYYYYYYBY",
+            "YBBBBBBBBBBBBBBY",
+            "YYYYYYYYYYYYYYYY",
+          ]),
+          usedBlock: sprite([
+            "3333333333333333",
+            "3BBBBBBBBBBBBBB3",
+            "3B333333333333B3",
+            "3B3BBBBBBBBBB3B3",
+            "3B3B33333333B3B3",
+            "3B3B3BBBBBB3B3B3",
+            "3B3B3B3333B3B3B3",
+            "3B3B3B3BB3B3B3B3",
+            "3B3B3B3BB3B3B3B3",
+            "3B3B3B3333B3B3B3",
+            "3B3B3BBBBBB3B3B3",
+            "3B3B33333333B3B3",
+            "3B3BBBBBBBBBB3B3",
+            "3B333333333333B3",
+            "3BBBBBBBBBBBBBB3",
+            "3333333333333333",
+          ]),
+          pipeTopLeft: sprite([
+            "RRRRRRRRRRRRRRRR",
+            "RBBBBBBBBBBBBBBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RRRRRRRRRRRRRRRR",
+          ]),
+          pipeTopRight: sprite([
+            "RRRRRRRRRRRRRRRR",
+            "RBBBBBBBBBBBBBBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RRRRRRRRRRRRRRRR",
+          ]),
+          pipeBodyLeft: sprite([
+            "RRRRRRRRRRRRRRRR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RBGGGGGGGGGGGGBR",
+            "RRRRRRRRRRRRRRRR",
+          ]),
+          pipeBodyRight: sprite([
+            "RRRRRRRRRRRRRRRR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RGGGGGGGGGGGGGBR",
+            "RRRRRRRRRRRRRRRR",
+          ]),
+        },
+        enemies: {
+          goombaWalk: [
+            sprite([
+              "................",
+              "................",
+              "....BBBBBBBB....",
+              "...BB333333BB...",
+              "..BB33SSSS33BB..",
+              "..B333S..S333B..",
+              "..B3333333333B..",
+              "..BB33333333BB..",
+              ".BB333BBBB333BB.",
+              ".B3333BBBB3333B.",
+              "..B3333333333B..",
+              "..BB33....33BB..",
+              "...B33....33B...",
+              "..BB........BB..",
+              "................",
+              "................",
+            ]),
+            sprite([
+              "................",
+              "................",
+              "....BBBBBBBB....",
+              "...BB333333BB...",
+              "..BB33SSSS33BB..",
+              "..B333S..S333B..",
+              "..B3333333333B..",
+              "..BB33333333BB..",
+              ".BB333BBBB333BB.",
+              ".B3333BBBB3333B.",
+              "..B3333333333B..",
+              "..BB33....33BB..",
+              "..B33..33..33B..",
+              ".BB....33....BB.",
+              "..BB........BB..",
+              "................",
+            ]),
+          ],
+          goombaSquished: sprite([
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "...BBBBBBBBBB...",
+            "..BB33333333BB..",
+            "..B3333333333B..",
+            "...BB333333BB...",
+            "................",
+            "................",
+            "................",
+            "................",
+          ]),
+          koopaWalk: [
+            sprite([
+              "................",
+              ".....GGGGGG.....",
+              "....GGYYYYGG....",
+              "...GGYSSSSYGG...",
+              "..GGYS....SYGG..",
+              "..GGYSSSSSSYGG..",
+              "...GGYYYYYYGG...",
+              "...GGG3333GGG...",
+              "..GG33333333GG..",
+              ".GG3333..3333GG.",
+              ".GG3333333333GG.",
+              "..GG33....33GG..",
+              "..GG3......3GG..",
+              "...G3......3G...",
+              "................",
+              "................",
+            ]),
+            sprite([
+              "................",
+              ".....GGGGGG.....",
+              "....GGYYYYGG....",
+              "...GGYSSSSYGG...",
+              "..GGYS....SYGG..",
+              "..GGYSSSSSSYGG..",
+              "...GGYYYYYYGG...",
+              "...GGG3333GGG...",
+              "..GG33333333GG..",
+              ".GG3333..3333GG.",
+              ".GG3333333333GG.",
+              "..GG33....33GG..",
+              "...G33..33..3G..",
+              "..GG..33..33GG..",
+              "...GG......GG...",
+              "................",
+            ]),
+          ],
+          koopaShell: sprite([
+            "................",
+            "................",
+            "....GGGGGGGG....",
+            "...GGYYYYYYGG...",
+            "..GGYYSSSSYYGG..",
+            "..GGYSSSSSSYGG..",
+            "..GGYSSSSSSYGG..",
+            "..GGYYSSSSYYGG..",
+            "...GGYYYYYYGG...",
+            "...GG333333GG...",
+            "....GG3333GG....",
+            ".....GGGGGG.....",
+            "................",
+            "................",
+            "................",
+            "................",
+          ]),
+          piranha: sprite([
+            "......RRRR......",
+            ".....RYYYYR.....",
+            "....RYYSSYYR....",
+            "...RYYSSSSYYR...",
+            "...RYS....SYR...",
+            "...RYYSSSSYYR...",
+            "....RRYYYYRR....",
+            "...GGGGGGGGGG...",
+            "...GGGYYYYGGG...",
+            "...GGYYGGYYGG...",
+            "...GGGGGGGGGG...",
+            "....GGGYYGGG....",
+            "....GGG..GGG....",
+            ".....GG..GG.....",
+            ".....GG..GG.....",
+            "................",
+          ]),
+          axe: sprite([
+            "................",
+            ".......YY.......",
+            "......YYYY......",
+            ".....YYRRYY.....",
+            "....YYRRRRYY....",
+            "...YYRRRRRRYY...",
+            "..YYRRRRRRRRYY..",
+            "...YYRRRRRRYY...",
+            "....YYRRRRYY....",
+            ".....YYRRYY.....",
+            "......YYYY......",
+            ".......YY.......",
+            ".......BB.......",
+            ".......BB.......",
+            ".......BB.......",
+            ".......BB.......",
+          ]),
+        },
+        items: {
+          mushroom: sprite([
+            "................",
+            ".....RRRRRR.....",
+            "...RRYYYYYYRR...",
+            "..RYYYYYYYYYYR..",
+            ".RYYYSSSSSSYYYR.",
+            ".RYYSSSSSSSSYYR.",
+            ".RYYSSSSSSSSYYR.",
+            ".RYYYSSSSSSYYYR.",
+            "..RRRRRRRRRRRR..",
+            "...BBBBBBBBBB...",
+            "..BBB.BBBB.BBB..",
+            "..BBBBBBBBBBBB..",
+            "...BBB....BBB...",
+            "..BBBB....BBBB..",
+            "................",
+            "................",
+          ]),
+        },
+      };
+      SPRITES.enemies.bossGoombaWalk = SPRITES.enemies.goombaWalk.map((frame) => scaleSprite(frame, 2));
+      SPRITES.enemies.bossGoombaIdle = scaleSprite(SPRITES.enemies.goombaWalk[0], 2);
+      SPRITES.mario.big = {
+        idle: scaleSpriteXY(SPRITES.mario.idle, 1, 2),
+        walk: SPRITES.mario.walk.map((f) => scaleSpriteXY(f, 1, 2)),
+        jump: scaleSpriteXY(SPRITES.mario.jump, 1, 2),
+        skid: scaleSpriteXY(SPRITES.mario.skid, 1, 2),
+      };
+
+      class InputHandler {
+        constructor() {
+          this.keys = {
+            left: false,
+            right: false,
+            up: false,
+            down: false,
+            jump: false,
+            fire: false,
+            start: false,
+            select: false,
+          };
+          this.isMobileControl = this.detectMobileControl();
+          this.mobileTilt = 0;
+          this.mobileGyroActive = false;
+          this.orientationHandler = (e) => this.onDeviceOrientation(e);
+          this.previous = { ...this.keys };
+          this.jumpPressed = false;
+          this.jumpHeld = false;
+          this.upPressed = false;
+          this.downPressed = false;
+          this.startPressed = false;
+          this.onUserAction = null;
+        }
+
+        init() {
+          document.addEventListener("keydown", (e) => this.onKey(e, true));
+          document.addEventListener("keyup", (e) => this.onKey(e, false));
+          if (window.PointerEvent) {
+            canvas.addEventListener("pointerdown", (e) => this.onPointerDown(e), { passive: false });
+            window.addEventListener("pointerup", (e) => this.onPointerUp(e), { passive: false });
+            window.addEventListener("pointercancel", (e) => this.onPointerUp(e), { passive: false });
+          } else {
+            canvas.addEventListener("touchstart", (e) => this.onTouchStart(e), { passive: false });
+            window.addEventListener("touchend", (e) => this.onTouchEnd(e), { passive: false });
+            window.addEventListener("touchcancel", (e) => this.onTouchEnd(e), { passive: false });
+          }
+        }
+
+        detectMobileControl() {
+          const coarsePointer = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+          const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+          return coarsePointer || hasTouch;
+        }
+
+        onPointerDown(e) {
+          if (!this.isMobileControl) return;
+          if (e.pointerType === "mouse") return;
+          this.enableMobileGyro();
+          this.keys.jump = true;
+          if (this.onUserAction) this.onUserAction();
+          e.preventDefault();
+        }
+
+        onPointerUp(e) {
+          if (!this.isMobileControl) return;
+          if (e.pointerType === "mouse") return;
+          this.keys.jump = false;
+          e.preventDefault();
+        }
+
+        onTouchStart(e) {
+          if (!this.isMobileControl) return;
+          this.enableMobileGyro();
+          this.keys.jump = true;
+          if (this.onUserAction) this.onUserAction();
+          e.preventDefault();
+        }
+
+        onTouchEnd(e) {
+          if (!this.isMobileControl) return;
+          this.keys.jump = false;
+          e.preventDefault();
+        }
+
+        enableMobileGyro() {
+          if (!this.isMobileControl || this.mobileGyroActive) return;
+          const attach = () => {
+            window.addEventListener("deviceorientation", this.orientationHandler, true);
+            this.mobileGyroActive = true;
+          };
+          if (typeof DeviceOrientationEvent === "undefined") return;
+          if (typeof DeviceOrientationEvent.requestPermission === "function") {
+            DeviceOrientationEvent.requestPermission()
+              .then((res) => {
+                if (res === "granted") attach();
+              })
+              .catch(() => {});
+            return;
+          }
+          attach();
+        }
+
+        onDeviceOrientation(e) {
+          if (!this.isMobileControl) return;
+          if (typeof e.gamma !== "number") return;
+          this.mobileTilt = Math.max(-45, Math.min(45, e.gamma));
+        }
+
+        onKey(e, pressed) {
+          const mapped = this.mapCode(e.code);
+          if (!mapped) return;
+          this.keys[mapped] = pressed;
+          if (pressed && this.onUserAction) this.onUserAction();
+          e.preventDefault();
+        }
+
+        mapCode(code) {
+          const map = {
+            ArrowLeft: "left",
+            ArrowRight: "right",
+            ArrowUp: "up",
+            ArrowDown: "down",
+            Space: "jump",
+            KeyX: "jump",
+            ShiftLeft: "fire",
+            ShiftRight: "fire",
+            KeyZ: "fire",
+            Enter: "start",
+            Tab: "select",
+          };
+          return map[code] || null;
+        }
+
+        update() {
+          if (this.isMobileControl) {
+            const deadZone = 7;
+            this.keys.left = this.mobileTilt < -deadZone;
+            this.keys.right = this.mobileTilt > deadZone;
+            this.keys.fire = false;
+          }
+          this.jumpPressed = this.keys.jump && !this.previous.jump;
+          this.jumpHeld = this.keys.jump;
+          this.upPressed = this.keys.up && !this.previous.up;
+          this.downPressed = this.keys.down && !this.previous.down;
+          this.startPressed = this.keys.start && !this.previous.start;
+          this.previous = { ...this.keys };
+        }
+      }
+
+      const TILE = {
+        EMPTY: 0,
+        GROUND: 1,
+        BRICK: 2,
+        QUESTION: 3,
+        PIPE_TOP_L: 4,
+        PIPE_TOP_R: 5,
+        PIPE_BODY_L: 6,
+        PIPE_BODY_R: 7,
+        USED: 8,
+        STAIR: 9,
+      };
+
+      const BG_PALETTE = {
+        cloud: "#ffffff",
+        cloudShadow: "#dce9ff",
+        hill: "#63b359",
+        hillDark: "#3f8f38",
+        bush: "#4ca449",
+      };
+
+      class TileMap {
+        constructor(levelId = "1-1") {
+          this.levelId = levelId;
+          this.height = 15;
+          this.width = 224;
+          this.theme = "overworld";
+          this.start = { x: 3, y: 13 };
+          this.goalTile = 152;
+          this.axeTile = null;
+          this.tiles = [];
+          this.enemySpawns = [];
+          this.questionContents = new Map();
+          this.buildLevel(levelId);
+        }
+
+        resetGrid(width) {
+          this.width = width;
+          this.tiles = Array.from({ length: this.height }, () => Array(this.width).fill(TILE.EMPTY));
+          this.enemySpawns = [];
+          this.axeTile = null;
+          this.questionContents.clear();
+        }
+
+        setQuestionContent(x, y, contentType) {
+          this.questionContents.set(`${x},${y}`, contentType);
+        }
+
+        buildLevel(levelId) {
+          if (levelId === "1-2") {
+            this.buildWorld12();
+            return;
+          }
+          if (levelId === "1-3") {
+            this.buildWorld13();
+            return;
+          }
+          if (levelId === "1-4") {
+            this.buildWorld14();
+            return;
+          }
+          this.buildWorld11();
+        }
+
+        fillGround(holes = []) {
+          for (let x = 0; x < this.width; x++) {
+            const isHole = holes.some((range) => x >= range[0] && x <= range[1]);
+            if (!isHole) this.setTile(x, 14, TILE.GROUND);
+          }
+        }
+
+        setTile(x, y, tileType) {
+          if (x < 0 || y < 0 || x >= this.width || y >= this.height) return;
+          this.tiles[y][x] = tileType;
+        }
+
+        setPipe(x, height) {
+          const topY = 14 - height;
+          this.setTile(x, topY, TILE.PIPE_TOP_L);
+          this.setTile(x + 1, topY, TILE.PIPE_TOP_R);
+          for (let y = topY + 1; y <= 13; y++) {
+            this.setTile(x, y, TILE.PIPE_BODY_L);
+            this.setTile(x + 1, y, TILE.PIPE_BODY_R);
+          }
+        }
+
+        addRightStairs(startX, stepCount) {
+          for (let i = 0; i < stepCount; i++) {
+            const x = startX + i;
+            for (let y = 13; y >= 13 - i; y--) {
+              this.setTile(x, y, TILE.STAIR);
+            }
+          }
+        }
+
+        addLeftStairs(startX, stepCount) {
+          for (let i = 0; i < stepCount; i++) {
+            const x = startX + i;
+            for (let y = 13; y >= 13 - (stepCount - 1 - i); y--) {
+              this.setTile(x, y, TILE.STAIR);
+            }
+          }
+        }
+
+        buildWorld11() {
+          this.theme = "overworld";
+          this.start = { x: 3, y: 13 };
+          this.goalTile = 152;
+          this.resetGrid(224);
+
+          const holes = [
+            [57, 58],
+            [69, 70],
+            [107, 108],
+            [131, 133],
+          ];
+          this.fillGround(holes);
+
+          this.setTile(16, 9, TILE.QUESTION);
+          this.setTile(20, 9, TILE.BRICK);
+          this.setTile(21, 9, TILE.QUESTION);
+          this.setTile(22, 9, TILE.BRICK);
+          this.setTile(23, 9, TILE.QUESTION);
+          this.setTile(24, 9, TILE.BRICK);
+          this.setTile(22, 5, TILE.QUESTION);
+          this.setQuestionContent(21, 9, "mushroom");
+          this.setQuestionContent(22, 5, "mushroom");
+
+          this.setPipe(24, 2);
+          this.setPipe(29, 3);
+          this.setPipe(34, 3);
+          this.setPipe(40, 3);
+
+          for (let x = 77; x <= 79; x++) this.setTile(x, 9, TILE.BRICK);
+          this.setTile(78, 9, TILE.QUESTION);
+          this.setTile(78, 5, TILE.BRICK);
+          this.setTile(79, 5, TILE.QUESTION);
+          for (let x = 80; x <= 86; x++) this.setTile(x, 9, x % 2 === 0 ? TILE.QUESTION : TILE.BRICK);
+          for (let x = 91; x <= 97; x++) this.setTile(x, 5, TILE.BRICK);
+          this.setTile(100, 9, TILE.BRICK);
+
+          this.addRightStairs(121, 8);
+          this.addRightStairs(134, 8);
+          this.addRightStairs(148, 4);
+
+          this.enemySpawns = [
+            { type: "goomba", x: 22, y: 13 },
+            { type: "goomba", x: 40, y: 13 },
+            { type: "goomba", x: 41, y: 13 },
+            { type: "goomba", x: 51, y: 13 },
+            { type: "goomba", x: 80, y: 13 },
+            { type: "goomba", x: 82, y: 13 },
+            { type: "koopa", x: 107, y: 13 },
+            { type: "goomba", x: 114, y: 13 },
+            { type: "piranha", x: 24, y: 12 },
+            { type: "piranha", x: 29, y: 11 },
+            { type: "piranha", x: 34, y: 11 },
+            { type: "piranha", x: 40, y: 11 },
+          ];
+        }
+
+        buildWorld12() {
+          this.theme = "underground";
+          this.start = { x: 3, y: 13 };
+          this.goalTile = 176;
+          this.resetGrid(190);
+
+          const holes = [[37, 38], [73, 75], [120, 122], [160, 161]];
+          this.fillGround(holes);
+
+          for (let x = 0; x < this.width; x++) {
+            if (x % 2 === 0) this.setTile(x, 2, TILE.BRICK);
+          }
+          for (let x = 10; x < 36; x++) this.setTile(x, 10, TILE.BRICK);
+          for (let x = 46; x < 70; x++) this.setTile(x, 9, TILE.BRICK);
+          for (let x = 84; x < 116; x++) this.setTile(x, 8, TILE.BRICK);
+          for (let x = 130; x < 155; x++) this.setTile(x, 10, TILE.BRICK);
+          for (let x = 166; x < 181; x++) this.setTile(x, 8, TILE.BRICK);
+
+          // Keep 1-2 traversable: add ramps up to the middle/high routes.
+          this.addRightStairs(42, 5);   // to y=9 route
+          this.addRightStairs(79, 6);   // to y=8 route
+          this.addRightStairs(127, 4);  // to y=10 route
+          this.addRightStairs(162, 6);  // to final y=8 route
+
+          this.setTile(28, 9, TILE.QUESTION);
+          this.setTile(102, 7, TILE.QUESTION);
+          this.setTile(172, 7, TILE.QUESTION);
+          this.setQuestionContent(102, 7, "mushroom");
+          this.setPipe(58, 3);
+          this.setPipe(144, 4);
+          this.setPipe(172, 3);
+
+          this.enemySpawns = [
+            { type: "goomba", x: 24, y: 13 },
+            { type: "koopa", x: 52, y: 13 },
+            { type: "goomba", x: 66, y: 13 },
+            { type: "koopa", x: 90, y: 13 },
+            { type: "goomba", x: 112, y: 13 },
+            { type: "goomba", x: 138, y: 13 },
+            { type: "koopa", x: 170, y: 13 },
+            { type: "piranha", x: 58, y: 11 },
+            { type: "piranha", x: 144, y: 10 },
+            { type: "piranha", x: 172, y: 11 },
+          ];
+        }
+
+        buildWorld13() {
+          this.theme = "sky";
+          this.start = { x: 2, y: 11 };
+          this.goalTile = 164;
+          this.resetGrid(178);
+
+          const holes = [[17, 20], [38, 40], [58, 60], [82, 84], [101, 103], [126, 128], [150, 152]];
+          this.fillGround(holes);
+          for (let x = 0; x <= 16; x++) this.setTile(x, 12, TILE.STAIR);
+
+          for (let x = 20; x <= 33; x++) this.setTile(x, 9, TILE.BRICK);
+          for (let x = 48; x <= 56; x++) this.setTile(x, 8, TILE.BRICK);
+          for (let x = 69; x <= 80; x++) this.setTile(x, 7, TILE.BRICK);
+          for (let x = 92; x <= 100; x++) this.setTile(x, 9, TILE.BRICK);
+          for (let x = 114; x <= 124; x++) this.setTile(x, 8, TILE.BRICK);
+          for (let x = 136; x <= 149; x++) this.setTile(x, 7, TILE.BRICK);
+          for (let x = 158; x <= 170; x++) this.setTile(x, 10, TILE.BRICK);
+          this.setTile(73, 6, TILE.QUESTION);
+          this.setTile(141, 6, TILE.QUESTION);
+          this.setQuestionContent(73, 6, "mushroom");
+          for (let x = 22; x <= 23; x++) this.setTile(x, 11, TILE.BRICK);
+          for (let x = 42; x <= 43; x++) this.setTile(x, 11, TILE.BRICK);
+          for (let x = 62; x <= 63; x++) this.setTile(x, 11, TILE.BRICK);
+          for (let x = 86; x <= 87; x++) this.setTile(x, 11, TILE.BRICK);
+          for (let x = 105; x <= 106; x++) this.setTile(x, 11, TILE.BRICK);
+          for (let x = 130; x <= 131; x++) this.setTile(x, 11, TILE.BRICK);
+          for (let x = 154; x <= 155; x++) this.setTile(x, 11, TILE.BRICK);
+
+          this.enemySpawns = [
+            { type: "goomba", x: 28, y: 13 },
+            { type: "koopa", x: 52, y: 13 },
+            { type: "goomba", x: 74, y: 13 },
+            { type: "koopa", x: 95, y: 13 },
+            { type: "goomba", x: 118, y: 13 },
+            { type: "koopa", x: 143, y: 13 },
+            { type: "goomba", x: 162, y: 13 },
+          ];
+        }
+
+        buildWorld14() {
+          this.theme = "castle";
+          this.start = { x: 3, y: 13 };
+          this.resetGrid(168);
+          this.goalTile = 158;
+          this.axeTile = 158;
+
+          const lavaPits = [[24, 27], [50, 54], [78, 81], [108, 111], [132, 134]];
+          this.fillGround(lavaPits);
+
+          for (let x = 0; x < this.width; x++) {
+            if (x % 3 !== 1) this.setTile(x, 3, TILE.BRICK);
+          }
+          for (let x = 18; x <= 23; x++) this.setTile(x, 10, TILE.STAIR);
+          for (let x = 41; x <= 48; x++) this.setTile(x, 9, TILE.STAIR);
+          for (let x = 69; x <= 76; x++) this.setTile(x, 8, TILE.STAIR);
+          for (let x = 97; x <= 105; x++) this.setTile(x, 9, TILE.STAIR);
+          for (let x = 122; x <= 130; x++) this.setTile(x, 8, TILE.STAIR);
+          for (let x = 142; x <= 153; x++) this.setTile(x, 10, TILE.STAIR);
+          this.setTile(36, 9, TILE.QUESTION);
+          this.setTile(86, 8, TILE.QUESTION);
+          this.setTile(146, 9, TILE.QUESTION);
+          this.setQuestionContent(86, 8, "mushroom");
+
+          this.enemySpawns = [
+            { type: "goomba", x: 16, y: 13 },
+            { type: "koopa", x: 34, y: 13 },
+            { type: "goomba", x: 62, y: 13 },
+            { type: "koopa", x: 88, y: 13 },
+            { type: "goomba", x: 116, y: 13 },
+            { type: "boss_goomba", x: 148, y: 12 },
+          ];
+        }
+
+        isSolid(tx, ty) {
+          if (tx < 0 || tx >= this.width) return true;
+          if (ty < 0) return true;
+          if (ty >= this.height) return false;
+          const tile = this.tiles[ty][tx];
+          return tile !== TILE.EMPTY;
+        }
+
+        onBlockHit(tx, ty, gameState) {
+          const tile = this.tiles[ty]?.[tx];
+          if (tile !== TILE.QUESTION) return;
+          this.tiles[ty][tx] = TILE.USED;
+          const key = `${tx},${ty}`;
+          const content = this.questionContents.get(key) || "coin";
+          this.questionContents.delete(key);
+          if (content === "mushroom") {
+            gameState.items.push(new MushroomItem(tx, ty));
+            gameState.popups.push(new CoinPopup(tx * CONFIG.TILE_SIZE, ty * CONFIG.TILE_SIZE, "M"));
+            return;
+          }
+
+          gameState.coins = (gameState.coins + 1) % 100;
+          gameState.score += 200;
+          gameState.popups.push(new CoinPopup(tx * CONFIG.TILE_SIZE, ty * CONFIG.TILE_SIZE));
+          if (gameState.audio) gameState.audio.playSFX("coin");
+        }
+
+        render(targetCtx, cameraX, frameCount) {
+          const startX = Math.floor(cameraX / CONFIG.TILE_SIZE);
+          const endX = Math.ceil((cameraX + CONFIG.INTERNAL_WIDTH) / CONFIG.TILE_SIZE) + 1;
+          const blink = Math.floor(frameCount / 8) % 2 === 0;
+          for (let ty = 0; ty < this.height; ty++) {
+            for (let tx = startX; tx <= endX; tx++) {
+              if (tx < 0 || tx >= this.width) continue;
+              const tile = this.tiles[ty][tx];
+              if (tile === TILE.EMPTY) continue;
+              const px = tx * CONFIG.TILE_SIZE - cameraX;
+              const py = ty * CONFIG.TILE_SIZE;
+              let spritePixels = SPRITES.tiles.ground;
+              if (tile === TILE.BRICK || tile === TILE.STAIR) spritePixels = SPRITES.tiles.block;
+              if (tile === TILE.QUESTION) spritePixels = blink ? SPRITES.tiles.question : SPRITES.tiles.block;
+              if (tile === TILE.USED) spritePixels = SPRITES.tiles.usedBlock;
+              if (tile === TILE.PIPE_TOP_L) spritePixels = SPRITES.tiles.pipeTopLeft;
+              if (tile === TILE.PIPE_TOP_R) spritePixels = SPRITES.tiles.pipeTopRight;
+              if (tile === TILE.PIPE_BODY_L) spritePixels = SPRITES.tiles.pipeBodyLeft;
+              if (tile === TILE.PIPE_BODY_R) spritePixels = SPRITES.tiles.pipeBodyRight;
+              drawIndexedSprite(targetCtx, spritePixels, MARIO_PALETTE, px, py, false);
+            }
+          }
+        }
+      }
+
+      class PhysicsEngine {
+        update(entity, tileMap, jumpHeld, gameState) {
+          if (!entity.grounded || entity.vy < 0) {
+            const gravity = entity.vy < 0 && jumpHeld ? CONFIG.GRAVITY_HOLD : CONFIG.GRAVITY_RELEASE;
+            entity.vy += gravity;
+            if (entity.vy > CONFIG.MAX_FALL_SPEED) entity.vy = CONFIG.MAX_FALL_SPEED;
+          }
+
+          this.resolveHorizontal(entity, tileMap);
+          this.resolveVertical(entity, tileMap, gameState);
+        }
+
+        resolveHorizontal(entity, tileMap) {
+          entity.x += entity.vx;
+          const box = entity.getHitbox();
+          const topTile = Math.floor(box.top / CONFIG.TILE_SIZE);
+          const bottomTile = Math.floor(box.bottom / CONFIG.TILE_SIZE);
+
+          if (entity.vx > 0) {
+            const rightTile = Math.floor(box.right / CONFIG.TILE_SIZE);
+            for (let ty = topTile; ty <= bottomTile; ty++) {
+              if (!tileMap.isSolid(rightTile, ty)) continue;
+              if (this.tryStepUp(entity, tileMap)) break;
+              entity.x = rightTile * CONFIG.TILE_SIZE - entity.width + entity.hitboxInset;
+              entity.vx = 0;
+              break;
+            }
+          } else if (entity.vx < 0) {
+            const leftTile = Math.floor(box.left / CONFIG.TILE_SIZE);
+            for (let ty = topTile; ty <= bottomTile; ty++) {
+              if (!tileMap.isSolid(leftTile, ty)) continue;
+              if (this.tryStepUp(entity, tileMap)) break;
+              entity.x = (leftTile + 1) * CONFIG.TILE_SIZE - entity.hitboxInset;
+              entity.vx = 0;
+              break;
+            }
+          }
+        }
+
+        tryStepUp(entity, tileMap) {
+          if (entity.type !== "mario" || !entity.grounded) return false;
+          const step = CONFIG.TILE_SIZE;
+          const originalY = entity.y;
+          entity.y -= step;
+
+          const box = entity.getHitbox();
+          const leftTile = Math.floor(box.left / CONFIG.TILE_SIZE);
+          const rightTile = Math.floor(box.right / CONFIG.TILE_SIZE);
+          const topTile = Math.floor(box.top / CONFIG.TILE_SIZE);
+          const bottomTile = Math.floor(box.bottom / CONFIG.TILE_SIZE);
+
+          for (let ty = topTile; ty <= bottomTile; ty++) {
+            for (let tx = leftTile; tx <= rightTile; tx++) {
+              if (!tileMap.isSolid(tx, ty)) continue;
+              entity.y = originalY;
+              return false;
+            }
+          }
+
+          const footY = Math.floor((box.bottom + 1) / CONFIG.TILE_SIZE);
+          let supported = false;
+          for (let tx = leftTile; tx <= rightTile; tx++) {
+            if (tileMap.isSolid(tx, footY)) {
+              supported = true;
+              break;
+            }
+          }
+
+          if (!supported) {
+            entity.y = originalY;
+            return false;
+          }
+
+          entity.vy = 0;
+          entity.grounded = true;
+          return true;
+        }
+
+        resolveVertical(entity, tileMap, gameState) {
+          entity.grounded = false;
+          entity.y += entity.vy;
+          const box = entity.getHitbox();
+          const leftTile = Math.floor(box.left / CONFIG.TILE_SIZE);
+          const rightTile = Math.floor(box.right / CONFIG.TILE_SIZE);
+
+          if (entity.vy > 0) {
+            const bottomTile = Math.floor(box.bottom / CONFIG.TILE_SIZE);
+            for (let tx = leftTile; tx <= rightTile; tx++) {
+              if (!tileMap.isSolid(tx, bottomTile)) continue;
+              entity.y = bottomTile * CONFIG.TILE_SIZE - entity.height;
+              entity.vy = 0;
+              entity.grounded = true;
+              return;
+            }
+          } else if (entity.vy < 0) {
+            const topTile = Math.floor(box.top / CONFIG.TILE_SIZE);
+            for (let tx = leftTile; tx <= rightTile; tx++) {
+              if (!tileMap.isSolid(tx, topTile)) continue;
+              entity.y = (topTile + 1) * CONFIG.TILE_SIZE;
+              entity.vy = 0;
+              if (entity.type === "mario" && gameState) tileMap.onBlockHit(tx, topTile, gameState);
+              return;
+            }
+          }
+
+          if (entity.vy === 0) {
+            const footY = Math.floor((box.bottom + 1) / CONFIG.TILE_SIZE);
+            for (let tx = leftTile; tx <= rightTile; tx++) {
+              if (tileMap.isSolid(tx, footY)) {
+                entity.grounded = true;
+                return;
+              }
+            }
+          }
+        }
+
+        overlaps(a, b) {
+          const ab = a.getHitbox();
+          const bb = b.getHitbox();
+          return ab.left < bb.right && ab.right > bb.left && ab.top < bb.bottom && ab.bottom > bb.top;
+        }
+
+        isStomp(mario, enemy) {
+          const mb = mario.getHitbox();
+          const eb = enemy.getHitbox();
+          if (mario.vy <= 0) return false;
+          const overlapX = mb.right > eb.left && mb.left < eb.right;
+          const inZone = mb.bottom >= eb.top && mb.bottom <= eb.top + 8;
+          return overlapX && inZone;
+        }
+      }
+
+      class Mario {
+        constructor(x, y) {
+          this.type = "mario";
+          this.spawnX = x;
+          this.spawnY = y;
+          this.x = x;
+          this.y = y;
+          this.width = 16;
+          this.height = 16;
+          this.hitboxInset = 1;
+          this.vx = 0;
+          this.vy = 0;
+          this.grounded = false;
+          this.facing = 1;
+          this.animState = "idle";
+          this.animFrame = 0;
+          this.animTimer = 0;
+          this.hurtTimer = 0;
+          this.isBig = false;
+          this.dead = false;
+          this.deathTimer = 0;
+          this.deathMode = "hit";
+          this.justRespawned = false;
+        }
+
+        respawn() {
+          this.x = this.spawnX;
+          this.y = this.spawnY;
+          this.vx = 0;
+          this.vy = 0;
+          this.width = 16;
+          this.height = 16;
+          this.isBig = false;
+          this.grounded = false;
+          this.dead = false;
+          this.deathTimer = 0;
+          this.hurtTimer = 60;
+          this.justRespawned = true;
+        }
+
+        die(mode = "hit", gameState = null) {
+          if (this.dead) return;
+          this.dead = true;
+          this.deathMode = mode;
+          this.deathTimer = 78;
+          this.vx = 0;
+          this.vy = mode === "fall" ? 1.5 : -4.2;
+          this.grounded = false;
+          if (gameState && gameState.audio) gameState.audio.playSFX("death");
+        }
+
+        grow(gameState = null) {
+          if (this.isBig) return;
+          this.isBig = true;
+          this.height = 32;
+          this.y -= 16;
+          this.hurtTimer = 40;
+          if (gameState) gameState.playerPower = "big";
+          if (gameState && gameState.audio) gameState.audio.playSFX("powerup");
+        }
+
+        shrink(gameState = null) {
+          if (!this.isBig) return;
+          this.isBig = false;
+          this.height = 16;
+          this.y += 16;
+          this.hurtTimer = 90;
+          if (gameState) gameState.playerPower = "small";
+          if (gameState && gameState.audio) gameState.audio.playSFX("powerdown");
+        }
+
+        takeDamage(gameState = null) {
+          if (this.dead || this.hurtTimer > 0) return;
+          if (this.isBig) {
+            this.shrink(gameState);
+            return;
+          }
+          this.die("hit", gameState);
+        }
+
+        getHitbox() {
+          return {
+            left: this.x + this.hitboxInset,
+            right: this.x + this.width - 1 - this.hitboxInset,
+            top: this.y,
+            bottom: this.y + this.height - 1,
+          };
+        }
+
+        update(input, physics, tileMap, gameState) {
+          if (this.dead) {
+            this.y += this.vy;
+            this.vy += this.deathMode === "fall" ? 0.28 : 0.34;
+            this.deathTimer--;
+            if (this.deathTimer <= 0 || this.y > CONFIG.INTERNAL_HEIGHT + 180) {
+              gameState.levelResetRequested = true;
+            }
+            return;
+          }
+
+          if (this.hurtTimer > 0) this.hurtTimer--;
+          this.handleHorizontalInput(input);
+          const jumped = this.handleJumpInput(input);
+          if (jumped && gameState.audio) gameState.audio.playSFX("jump");
+          physics.update(this, tileMap, input.jumpHeld, gameState);
+          this.updateAnimation(input);
+          if (this.y > CONFIG.INTERNAL_HEIGHT + 8) {
+            this.die("fall", gameState);
+          }
+        }
+
+        handleHorizontalInput(input) {
+          const dashActive = input.keys.fire;
+          const pressingRight = input.keys.right && !input.keys.left;
+          const pressingLeft = input.keys.left && !input.keys.right;
+
+          if (pressingRight) {
+            this.facing = 1;
+            const maxSpeed = dashActive ? CONFIG.RUN_MAX : CONFIG.WALK_MAX;
+            if (this.vx < 0) this.vx += CONFIG.SKID_DECEL;
+            else this.vx += CONFIG.WALK_ACCEL;
+            if (this.vx > maxSpeed) this.vx = maxSpeed;
+          } else if (pressingLeft) {
+            this.facing = -1;
+            const maxSpeed = dashActive ? CONFIG.RUN_MAX : CONFIG.WALK_MAX;
+            if (this.vx > 0) this.vx -= CONFIG.SKID_DECEL;
+            else this.vx -= CONFIG.WALK_ACCEL;
+            if (this.vx < -maxSpeed) this.vx = -maxSpeed;
+          } else {
+            if (this.vx > 0) this.vx = Math.max(0, this.vx - CONFIG.DECEL);
+            else if (this.vx < 0) this.vx = Math.min(0, this.vx + CONFIG.DECEL);
+          }
+        }
+
+        handleJumpInput(input) {
+          if (!this.grounded || !input.jumpPressed) return false;
+          const speed = Math.abs(this.vx);
+          const running = speed > CONFIG.WALK_MAX * 0.9;
+          const dashJump = input.keys.fire && speed > 0.5;
+          if (dashJump) this.vy = CONFIG.JUMP_VEL_DASH;
+          else this.vy = running ? CONFIG.JUMP_VEL_RUN : CONFIG.JUMP_VEL_WALK;
+          this.grounded = false;
+          return true;
+        }
+
+        updateAnimation(input) {
+          if (!this.grounded) {
+            this.animState = "jump";
+            this.animFrame = 0;
+            this.animTimer = 0;
+            return;
+          }
+
+          const oppositeInput =
+            (this.vx > 0.3 && input.keys.left && !input.keys.right) ||
+            (this.vx < -0.3 && input.keys.right && !input.keys.left);
+          if (oppositeInput) {
+            this.animState = "skid";
+            this.animFrame = 0;
+            this.animTimer = 0;
+            return;
+          }
+
+          const speed = Math.abs(this.vx);
+          if (speed < 0.1) {
+            this.animState = "idle";
+            this.animFrame = 0;
+            this.animTimer = 0;
+            return;
+          }
+
+          this.animState = "walk";
+          this.animTimer += 1 + speed * 0.4;
+          if (this.animTimer >= 6) {
+            this.animTimer = 0;
+            this.animFrame = (this.animFrame + 1) % 3;
+          }
+        }
+
+        render(targetCtx, cameraX) {
+          if (this.hurtTimer > 0 && Math.floor(this.hurtTimer / 4) % 2 === 0) return;
+          const drawX = this.x - cameraX;
+          const drawY = this.y;
+          let pixels = SPRITES.mario.idle;
+          const set = this.isBig ? SPRITES.mario.big : SPRITES.mario;
+          if (this.animState === "jump") pixels = SPRITES.mario.jump;
+          else if (this.animState === "skid") pixels = SPRITES.mario.skid;
+          else if (this.animState === "walk") pixels = SPRITES.mario.walk[this.animFrame];
+          if (this.animState === "jump") pixels = set.jump;
+          else if (this.animState === "skid") pixels = set.skid;
+          else if (this.animState === "walk") pixels = set.walk[this.animFrame];
+          else pixels = set.idle;
+          drawIndexedSprite(targetCtx, pixels, MARIO_PALETTE, drawX, drawY, this.facing < 0);
+        }
+      }
+
+      class EnemyWalker {
+        constructor(type, tileX, tileY, width = 16, height = 16, speed = 0.5) {
+          this.type = type;
+          this.x = tileX * CONFIG.TILE_SIZE;
+          this.y = tileY * CONFIG.TILE_SIZE;
+          this.width = width;
+          this.height = height;
+          this.hitboxInset = 1;
+          this.vx = -speed;
+          this.vy = 0;
+          this.grounded = false;
+          this.active = true;
+          this.dead = false;
+          this.squishTimer = 0;
+          this.animTimer = 0;
+          this.animFrame = 0;
+          this.speed = speed;
+        }
+
+        getHitbox() {
+          return {
+            left: this.x + this.hitboxInset,
+            right: this.x + this.width - 1 - this.hitboxInset,
+            top: this.y,
+            bottom: this.y + this.height - 1,
+          };
+        }
+
+        canBeStomped() {
+          return true;
+        }
+
+        onStomp(mario, state) {
+          this.dead = true;
+          this.vx = 0;
+          this.vy = 0;
+          this.squishTimer = 20;
+          mario.vy = CONFIG.STOMP_BOUNCE;
+          state.score += 100;
+          if (state.audio) state.audio.playSFX("stomp");
+        }
+
+        updateWalkPhysics(tileMap) {
+          this.vy += CONFIG.GRAVITY_RELEASE;
+          if (this.vy > CONFIG.MAX_FALL_SPEED) this.vy = CONFIG.MAX_FALL_SPEED;
+
+          this.x += this.vx;
+          const box = this.getHitbox();
+          const topTile = Math.floor(box.top / CONFIG.TILE_SIZE);
+          const bottomTile = Math.floor(box.bottom / CONFIG.TILE_SIZE);
+          if (this.vx < 0) {
+            const leftTile = Math.floor(box.left / CONFIG.TILE_SIZE);
+            for (let ty = topTile; ty <= bottomTile; ty++) {
+              if (!tileMap.isSolid(leftTile, ty)) continue;
+              this.x = (leftTile + 1) * CONFIG.TILE_SIZE - this.hitboxInset;
+              this.vx = this.speed;
+              break;
+            }
+          } else {
+            const rightTile = Math.floor(box.right / CONFIG.TILE_SIZE);
+            for (let ty = topTile; ty <= bottomTile; ty++) {
+              if (!tileMap.isSolid(rightTile, ty)) continue;
+              this.x = rightTile * CONFIG.TILE_SIZE - this.width + this.hitboxInset;
+              this.vx = -this.speed;
+              break;
+            }
+          }
+
+          this.grounded = false;
+          this.y += this.vy;
+          const after = this.getHitbox();
+          const leftTile = Math.floor(after.left / CONFIG.TILE_SIZE);
+          const rightTile = Math.floor(after.right / CONFIG.TILE_SIZE);
+          if (this.vy > 0) {
+            const bottomTile2 = Math.floor(after.bottom / CONFIG.TILE_SIZE);
+            for (let tx = leftTile; tx <= rightTile; tx++) {
+              if (!tileMap.isSolid(tx, bottomTile2)) continue;
+              this.y = bottomTile2 * CONFIG.TILE_SIZE - this.height;
+              this.vy = 0;
+              this.grounded = true;
+              break;
+            }
+          }
+        }
+      }
+
+      class Goomba extends EnemyWalker {
+        constructor(tileX, tileY) {
+          super("goomba", tileX, tileY, 16, 16, CONFIG.GOOMBA_SPEED);
+        }
+
+        update(tileMap) {
+          if (!this.active) return;
+          if (this.dead) {
+            this.squishTimer--;
+            if (this.squishTimer <= 0) this.active = false;
+            return;
+          }
+
+          this.updateWalkPhysics(tileMap);
+          if (this.y > CONFIG.INTERNAL_HEIGHT + 128) this.active = false;
+          this.animTimer++;
+          if (this.animTimer >= 12) {
+            this.animTimer = 0;
+            this.animFrame = (this.animFrame + 1) % 2;
+          }
+        }
+
+        render(targetCtx, cameraX) {
+          if (!this.active) return;
+          const drawX = this.x - cameraX;
+          const drawY = this.y;
+          const pixels = this.dead ? SPRITES.enemies.goombaSquished : SPRITES.enemies.goombaWalk[this.animFrame];
+          drawIndexedSprite(targetCtx, pixels, MARIO_PALETTE, drawX, drawY, false);
+        }
+      }
+
+      class Koopa extends EnemyWalker {
+        constructor(tileX, tileY) {
+          super("koopa", tileX, tileY, 16, 16, 0.45);
+          this.shell = false;
+        }
+
+        onStomp(mario, state) {
+          if (!this.shell) {
+            this.shell = true;
+            this.vx = 0;
+            mario.vy = CONFIG.STOMP_BOUNCE;
+            state.score += 200;
+          } else if (Math.abs(this.vx) < 0.05) {
+            this.vx = mario.facing >= 0 ? 2.5 : -2.5;
+            mario.vy = CONFIG.STOMP_BOUNCE;
+            state.score += 400;
+          } else {
+            this.vx = 0;
+            mario.vy = CONFIG.STOMP_BOUNCE;
+            state.score += 100;
+          }
+          if (state.audio) state.audio.playSFX("stomp");
+        }
+
+        update(tileMap) {
+          if (!this.active) return;
+          this.speed = this.shell && Math.abs(this.vx) >= 2 ? 2.5 : 0.45;
+          this.updateWalkPhysics(tileMap);
+          if (!this.shell && Math.abs(this.vx) < 0.05) this.vx = -0.45;
+          if (this.y > CONFIG.INTERNAL_HEIGHT + 128) this.active = false;
+          this.animTimer++;
+          if (this.animTimer >= 12) {
+            this.animTimer = 0;
+            this.animFrame = (this.animFrame + 1) % 2;
+          }
+        }
+
+        render(targetCtx, cameraX) {
+          if (!this.active) return;
+          const drawX = this.x - cameraX;
+          const drawY = this.y;
+          const pixels = this.shell ? SPRITES.enemies.koopaShell : SPRITES.enemies.koopaWalk[this.animFrame];
+          drawIndexedSprite(targetCtx, pixels, MARIO_PALETTE, drawX, drawY, this.vx > 0);
+        }
+      }
+
+      class Piranha {
+        constructor(tileX, tileY) {
+          this.type = "piranha";
+          this.x = tileX * CONFIG.TILE_SIZE;
+          this.baseY = tileY * CONFIG.TILE_SIZE;
+          this.y = this.baseY;
+          this.width = 16;
+          this.height = 16;
+          this.hitboxInset = 1;
+          this.active = true;
+          this.phase = Math.random() * Math.PI * 2;
+        }
+
+        getHitbox() {
+          return {
+            left: this.x + this.hitboxInset,
+            right: this.x + this.width - 1 - this.hitboxInset,
+            top: this.y,
+            bottom: this.y + this.height - 1,
+          };
+        }
+
+        canBeStomped() {
+          return false;
+        }
+
+        onStomp() {}
+
+        update(tileMap, state, mario) {
+          if (!this.active) return;
+          const nearPipe = Math.abs((mario.x + 8) - (this.x + 8)) < 18;
+          this.phase += 0.05;
+          const wave = Math.sin(this.phase) * 10;
+          this.y = this.baseY + (nearPipe ? 0 : wave);
+        }
+
+        render(targetCtx, cameraX) {
+          if (!this.active) return;
+          const drawX = this.x - cameraX;
+          drawIndexedSprite(targetCtx, SPRITES.enemies.piranha, MARIO_PALETTE, drawX, this.y, false);
+        }
+      }
+
+      class BossGoomba extends EnemyWalker {
+        constructor(tileX, tileY) {
+          super("boss_goomba", tileX, tileY, 32, 32, 0.35);
+        }
+
+        canBeStomped() {
+          return false;
+        }
+
+        onStomp(mario) {
+          mario.vy = -2.2;
+        }
+
+        update(tileMap) {
+          if (!this.active) return;
+          this.updateWalkPhysics(tileMap);
+          if (this.y > CONFIG.INTERNAL_HEIGHT + 128) this.active = false;
+          this.animTimer++;
+          if (this.animTimer >= 16) {
+            this.animTimer = 0;
+            this.animFrame = (this.animFrame + 1) % 2;
+          }
+        }
+
+        render(targetCtx, cameraX) {
+          if (!this.active) return;
+          const drawX = this.x - cameraX;
+          const drawY = this.y;
+          const frames = SPRITES.enemies.bossGoombaWalk;
+          drawIndexedSprite(targetCtx, frames[this.animFrame], MARIO_PALETTE, drawX, drawY, this.vx > 0);
+        }
+      }
+
+      class MushroomItem {
+        constructor(blockX, blockY) {
+          this.type = "mushroom";
+          this.x = blockX * CONFIG.TILE_SIZE;
+          this.y = blockY * CONFIG.TILE_SIZE;
+          this.width = 16;
+          this.height = 16;
+          this.hitboxInset = 1;
+          this.active = true;
+          this.vx = 1.0;
+          this.vy = 0;
+          this.riseTargetY = this.y - CONFIG.TILE_SIZE;
+          this.rising = true;
+        }
+
+        getHitbox() {
+          return {
+            left: this.x + this.hitboxInset,
+            right: this.x + this.width - 1 - this.hitboxInset,
+            top: this.y,
+            bottom: this.y + this.height - 1,
+          };
+        }
+
+        update(tileMap) {
+          if (!this.active) return;
+
+          if (this.rising) {
+            this.y -= 1;
+            if (this.y <= this.riseTargetY) {
+              this.y = this.riseTargetY;
+              this.rising = false;
+            }
+            return;
+          }
+
+          this.vy += CONFIG.GRAVITY_RELEASE;
+          if (this.vy > CONFIG.MAX_FALL_SPEED) this.vy = CONFIG.MAX_FALL_SPEED;
+
+          this.x += this.vx;
+          const box = this.getHitbox();
+          const topTile = Math.floor(box.top / CONFIG.TILE_SIZE);
+          const bottomTile = Math.floor(box.bottom / CONFIG.TILE_SIZE);
+
+          if (this.vx > 0) {
+            const rightTile = Math.floor(box.right / CONFIG.TILE_SIZE);
+            for (let ty = topTile; ty <= bottomTile; ty++) {
+              if (!tileMap.isSolid(rightTile, ty)) continue;
+              this.x = rightTile * CONFIG.TILE_SIZE - this.width + this.hitboxInset;
+              this.vx = -1.0;
+              break;
+            }
+          } else {
+            const leftTile = Math.floor(box.left / CONFIG.TILE_SIZE);
+            for (let ty = topTile; ty <= bottomTile; ty++) {
+              if (!tileMap.isSolid(leftTile, ty)) continue;
+              this.x = (leftTile + 1) * CONFIG.TILE_SIZE - this.hitboxInset;
+              this.vx = 1.0;
+              break;
+            }
+          }
+
+          this.y += this.vy;
+          const after = this.getHitbox();
+          const leftTile = Math.floor(after.left / CONFIG.TILE_SIZE);
+          const rightTile = Math.floor(after.right / CONFIG.TILE_SIZE);
+          if (this.vy > 0) {
+            const bottomTile2 = Math.floor(after.bottom / CONFIG.TILE_SIZE);
+            for (let tx = leftTile; tx <= rightTile; tx++) {
+              if (!tileMap.isSolid(tx, bottomTile2)) continue;
+              this.y = bottomTile2 * CONFIG.TILE_SIZE - this.height;
+              this.vy = 0;
+              break;
+            }
+          }
+
+          if (this.y > CONFIG.INTERNAL_HEIGHT + 160) this.active = false;
+        }
+
+        render(targetCtx, cameraX) {
+          if (!this.active) return;
+          drawStyledSprite(targetCtx, SPRITES.items.mushroom, MARIO_PALETTE, this.x - cameraX, this.y, false);
+        }
+      }
+
+      class CoinPopup {
+        constructor(x, y, text = "200") {
+          this.x = x;
+          this.y = y;
+          this.text = text;
+          this.timer = 24;
+          this.active = true;
+        }
+
+        update() {
+          if (!this.active) return;
+          this.y -= 1.25;
+          this.timer--;
+          if (this.timer <= 0) this.active = false;
+        }
+
+        render(targetCtx, cameraX) {
+          if (!this.active) return;
+          drawNesText(targetCtx, this.text, Math.floor(this.x - cameraX - 2), Math.floor(this.y), "#ffffff");
+        }
+      }
+
+      class AudioEngine {
+        constructor() {
+          this.ctx = null;
+          this.master = null;
+          this.bgmTimer = null;
+          this.currentTrack = null;
+        }
+
+        ensure() {
+          if (!this.ctx) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return;
+            this.ctx = new Ctx();
+            this.master = this.ctx.createGain();
+            this.master.gain.value = 0.08;
+            this.master.connect(this.ctx.destination);
+          }
+          if (this.ctx.state === "suspended") this.ctx.resume();
+        }
+
+        tone(freq, dur = 0.12, type = "square", gain = 0.2, when = 0) {
+          if (!this.ctx || !this.master || !freq) return;
+          const t0 = this.ctx.currentTime + when;
+          const osc = this.ctx.createOscillator();
+          const amp = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, t0);
+          amp.gain.setValueAtTime(gain, t0);
+          amp.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+          osc.connect(amp);
+          amp.connect(this.master);
+          osc.start(t0);
+          osc.stop(t0 + dur + 0.01);
+        }
+
+        playSFX(name) {
+          this.ensure();
+          if (!this.ctx) return;
+          if (name === "jump") {
+            this.tone(440, 0.07, "square", 0.25, 0);
+            this.tone(660, 0.08, "square", 0.2, 0.05);
+          } else if (name === "coin") {
+            this.tone(988, 0.05, "square", 0.25, 0);
+            this.tone(1318, 0.08, "square", 0.2, 0.05);
+          } else if (name === "powerup") {
+            this.tone(523, 0.08, "square", 0.2, 0);
+            this.tone(659, 0.08, "square", 0.2, 0.08);
+            this.tone(784, 0.1, "square", 0.22, 0.16);
+            this.tone(988, 0.12, "square", 0.24, 0.26);
+          } else if (name === "powerdown") {
+            this.tone(784, 0.08, "square", 0.2, 0);
+            this.tone(659, 0.08, "square", 0.2, 0.08);
+            this.tone(523, 0.1, "square", 0.2, 0.16);
+          } else if (name === "stomp") {
+            this.tone(220, 0.08, "triangle", 0.28, 0);
+          } else if (name === "start") {
+            this.tone(523, 0.08, "square", 0.18, 0);
+            this.tone(659, 0.08, "square", 0.18, 0.1);
+            this.tone(784, 0.1, "square", 0.2, 0.2);
+          } else if (name === "clear") {
+            this.tone(784, 0.1, "square", 0.2, 0);
+            this.tone(988, 0.1, "square", 0.2, 0.1);
+            this.tone(1175, 0.1, "square", 0.2, 0.2);
+            this.tone(1568, 0.14, "square", 0.24, 0.32);
+          } else if (name === "death") {
+            this.tone(440, 0.1, "square", 0.2, 0);
+            this.tone(370, 0.14, "square", 0.2, 0.1);
+            this.tone(294, 0.18, "square", 0.2, 0.24);
+            this.tone(220, 0.2, "square", 0.2, 0.42);
+          }
+        }
+
+        playBGM(trackName) {
+          this.ensure();
+          if (!this.ctx) return;
+          if (this.currentTrack === trackName && this.bgmTimer) return;
+          this.stopBGM();
+          this.currentTrack = trackName;
+
+          const tracks = {
+            overworld: { notes: [659, 659, 0, 659, 0, 523, 659, 0, 784, 0, 392, 0], interval: 170, wave: "square" },
+            underground: { notes: [220, 0, 220, 247, 262, 0, 196, 0], interval: 180, wave: "triangle" },
+            castle: { notes: [196, 0, 185, 0, 175, 0, 165, 0], interval: 200, wave: "square" },
+          };
+          const track = tracks[trackName] || tracks.overworld;
+          let i = 0;
+          this.bgmTimer = setInterval(() => {
+            const note = track.notes[i % track.notes.length];
+            i++;
+            if (note) this.tone(note, 0.12, track.wave, 0.08, 0);
+          }, track.interval);
+        }
+
+        stopBGM() {
+          if (this.bgmTimer) {
+            clearInterval(this.bgmTimer);
+            this.bgmTimer = null;
+          }
+          this.currentTrack = null;
+        }
+
+        stopAll() {
+          this.stopBGM();
+        }
+      }
+
+      function renderBackground(cameraX, theme) {
+        if (theme === "underground") {
+          ctx.fillStyle = "#050505";
+          ctx.fillRect(0, 0, CONFIG.INTERNAL_WIDTH, CONFIG.INTERNAL_HEIGHT);
+          const offset = Math.floor(cameraX / 3) % 32;
+          for (let x = -32 - offset; x < CONFIG.INTERNAL_WIDTH + 32; x += 32) {
+            ctx.fillStyle = "#1a1a1a";
+            ctx.fillRect(x + 4, 32, 24, 4);
+            ctx.fillRect(x + 10, 64, 18, 4);
+            ctx.fillRect(x + 2, 96, 20, 4);
+          }
+          return;
+        }
+
+        if (theme === "castle") {
+          ctx.fillStyle = "#111111";
+          ctx.fillRect(0, 0, CONFIG.INTERNAL_WIDTH, CONFIG.INTERNAL_HEIGHT);
+          const offset = Math.floor(cameraX / 2) % 24;
+          for (let x = -24 - offset; x < CONFIG.INTERNAL_WIDTH + 24; x += 24) {
+            ctx.fillStyle = "#1e1e1e";
+            ctx.fillRect(x, 28, 16, 20);
+            ctx.fillRect(x + 8, 52, 16, 20);
+          }
+          ctx.fillStyle = "#772222";
+          ctx.fillRect(0, 224, CONFIG.INTERNAL_WIDTH, 16);
+          return;
+        }
+
+        ctx.fillStyle = theme === "sky" ? "#76c5ff" : "#5c94fc";
+        ctx.fillRect(0, 0, CONFIG.INTERNAL_WIDTH, CONFIG.INTERNAL_HEIGHT);
+
+        // Near-ground background strip to read as soil/grass behind tiles.
+        ctx.fillStyle = "#4ca449";
+        ctx.fillRect(0, 208, CONFIG.INTERNAL_WIDTH, 16);
+        ctx.fillStyle = "#63b359";
+        ctx.fillRect(0, 204, CONFIG.INTERNAL_WIDTH, 4);
+
+        const patternOffset = Math.floor(cameraX / 2) % 64;
+        for (let base = -64 - patternOffset; base < CONFIG.INTERNAL_WIDTH + 64; base += 64) {
+          ctx.fillStyle = BG_PALETTE.cloudShadow;
+          ctx.fillRect(base + 10, 18, 26, 8);
+          ctx.fillStyle = BG_PALETTE.cloud;
+          ctx.fillRect(base + 8, 16, 26, 8);
+
+          // Hill
+          ctx.fillStyle = BG_PALETTE.hillDark;
+          ctx.fillRect(base + 2, 178, 28, 30);
+          ctx.fillStyle = BG_PALETTE.hill;
+          ctx.fillRect(base + 4, 180, 24, 26);
+
+          // Tree trunk + canopy (to look like a tree, not a pipe)
+          ctx.fillStyle = "#8b4f1f";
+          ctx.fillRect(base + 42, 164, 8, 44);
+          ctx.fillStyle = "#6a3b16";
+          ctx.fillRect(base + 44, 164, 4, 44);
+          ctx.fillStyle = "#2ea742";
+          ctx.fillRect(base + 34, 146, 24, 16);
+          ctx.fillRect(base + 30, 154, 32, 10);
+          ctx.fillStyle = "#3ebd52";
+          ctx.fillRect(base + 36, 148, 20, 12);
+
+          // Bush
+          ctx.fillStyle = BG_PALETTE.bush;
+          ctx.fillRect(base + 8, 194, 22, 12);
+          ctx.fillStyle = "#5fbe60";
+          ctx.fillRect(base + 10, 196, 18, 8);
+        }
+      }
+
+      const input = new InputHandler();
+      input.init();
+      const audio = new AudioEngine();
+      input.onUserAction = () => audio.ensure();
+      const physics = new PhysicsEngine();
+
+      let tileMap = null;
+      let mario = null;
+
+      const state = {
+        mode: "title",
+        titleSelection: 0,
+        score: 0,
+        coins: 0,
+        lives: CONFIG.START_LIVES,
+        playerPower: "small",
+        levelIndex: 0,
+        world: "1-1",
+        time: 400,
+        timeCounter: 0,
+        frameCount: 0,
+        cameraX: 0,
+        goalX: 152 * CONFIG.TILE_SIZE,
+        axeX: null,
+        clearTimer: 0,
+        introTimer: 0,
+        endingTimer: 0,
+        gameOverTimer: 0,
+        levelResetRequested: false,
+        enemies: [],
+        items: [],
+        popups: [],
+        audio,
+      };
+      const LEVEL_ORDER = ["1-1", "1-2", "1-3", "1-4"];
+
+      function pad(n, len) {
+        return String(n).padStart(len, "0");
+      }
+
+      function currentLevelId() {
+        return LEVEL_ORDER[state.levelIndex] || LEVEL_ORDER[0];
+      }
+
+      function bgmForTheme(theme) {
+        if (theme === "underground") return "underground";
+        if (theme === "castle") return "castle";
+        return "overworld";
+      }
+
+      function createEnemy(spawn) {
+        if (spawn.type === "koopa") return new Koopa(spawn.x, spawn.y);
+        if (spawn.type === "piranha") return new Piranha(spawn.x, spawn.y);
+        if (spawn.type === "boss_goomba") return new BossGoomba(spawn.x, spawn.y);
+        return new Goomba(spawn.x, spawn.y);
+      }
+
+      function resetEnemiesFromSpawns() {
+        state.enemies = tileMap.enemySpawns.map((spawn) => createEnemy(spawn));
+      }
+
+      function resetLevel(levelId = currentLevelId()) {
+        tileMap = new TileMap(levelId);
+        mario = new Mario(tileMap.start.x * CONFIG.TILE_SIZE, tileMap.start.y * CONFIG.TILE_SIZE);
+        if (state.playerPower === "big") {
+          mario.isBig = true;
+          mario.height = 32;
+          mario.y -= 16;
+        }
+        resetEnemiesFromSpawns();
+        state.items = [];
+        state.popups = [];
+        state.levelResetRequested = false;
+        state.world = levelId;
+        state.time = 400;
+        state.timeCounter = 0;
+        state.cameraX = 0;
+        state.goalX = tileMap.goalTile * CONFIG.TILE_SIZE;
+        state.axeX = tileMap.axeTile != null ? tileMap.axeTile * CONFIG.TILE_SIZE : null;
+        state.clearTimer = 0;
+      }
+
+      function enterStageIntro() {
+        state.mode = "intro";
+        state.introTimer = 90;
+        state.audio.stopBGM();
+        state.audio.playSFX("start");
+      }
+
+      function startGame() {
+        state.score = 0;
+        state.coins = 0;
+        state.lives = CONFIG.START_LIVES;
+        state.playerPower = "small";
+        state.levelIndex = 0;
+        resetLevel(currentLevelId());
+        enterStageIntro();
+      }
+
+      function advanceToNextLevel() {
+        if (state.levelIndex < LEVEL_ORDER.length - 1) {
+          state.levelIndex += 1;
+          resetLevel(currentLevelId());
+          enterStageIntro();
+          return;
+        }
+        state.mode = "ending";
+        state.endingTimer = 0;
+        state.audio.stopBGM();
+        state.audio.playSFX("clear");
+      }
+
+      function backToTitle() {
+        state.mode = "title";
+        state.titleSelection = 0;
+        state.levelIndex = 0;
+        state.playerPower = "small";
+        state.world = LEVEL_ORDER[0];
+        state.audio.stopAll();
+      }
+
+      function updateTitle() {
+        if (input.upPressed || input.downPressed) {
+          state.titleSelection = state.titleSelection === 0 ? 1 : 0;
+        }
+        if (input.startPressed || input.jumpPressed) {
+          startGame();
+        }
+      }
+
+      function updateIntro() {
+        state.introTimer--;
+        if (state.introTimer <= 0 || input.startPressed || input.jumpPressed) {
+          state.mode = "playing";
+          state.audio.playBGM(bgmForTheme(tileMap.theme));
+        }
+      }
+
+      function updatePlaying() {
+        mario.update(input, physics, tileMap, state);
+
+        if (state.levelResetRequested) {
+          state.levelResetRequested = false;
+          state.lives = Math.max(0, state.lives - 1);
+          state.playerPower = "small";
+          if (state.lives <= 0) {
+            state.mode = "gameover";
+            state.gameOverTimer = 0;
+            state.audio.stopBGM();
+            return;
+          }
+          resetLevel(currentLevelId());
+          enterStageIntro();
+          return;
+        }
+
+        const maxCamera = tileMap.width * CONFIG.TILE_SIZE - CONFIG.INTERNAL_WIDTH;
+        state.cameraX = Math.max(0, Math.min(maxCamera, Math.floor(mario.x - 96)));
+
+        for (const enemy of state.enemies) {
+          if (!enemy.active) continue;
+          if (enemy.x < state.cameraX - 48 || enemy.x > state.cameraX + CONFIG.INTERNAL_WIDTH + 48) continue;
+          enemy.update(tileMap, state, mario);
+
+          if (mario.dead || enemy.dead || mario.hurtTimer > 0) continue;
+          if (!physics.overlaps(mario, enemy)) continue;
+
+          if (physics.isStomp(mario, enemy) && enemy.canBeStomped()) {
+            enemy.onStomp(mario, state);
+          } else {
+            mario.takeDamage(state);
+          }
+        }
+
+        for (const item of state.items) {
+          if (!item.active) continue;
+          if (item.x < state.cameraX - 48 || item.x > state.cameraX + CONFIG.INTERNAL_WIDTH + 48) continue;
+          item.update(tileMap);
+
+          if (mario.dead) continue;
+          if (!physics.overlaps(mario, item)) continue;
+          item.active = false;
+          state.score += 1000;
+          state.popups.push(new CoinPopup(item.x, item.y, "1000"));
+          mario.grow(state);
+        }
+        state.items = state.items.filter((it) => it.active);
+
+        for (const popup of state.popups) popup.update();
+        state.popups = state.popups.filter((p) => p.active);
+
+        state.timeCounter++;
+        if (state.timeCounter >= 24) {
+          state.timeCounter = 0;
+          state.time = Math.max(0, state.time - 1);
+        }
+        if (state.time === 0 && !mario.dead) {
+          mario.die("hit", state);
+        }
+
+        const reachedNormalGoal = mario.x >= state.goalX;
+        const reachedAxeGoal = state.axeX != null && mario.x + mario.width >= state.axeX;
+        const reachedGoal = tileMap.levelId === "1-4" ? reachedAxeGoal : reachedNormalGoal;
+
+        if (!mario.dead && reachedGoal) {
+          state.mode = "clear";
+          state.clearTimer = 0;
+          state.audio.stopBGM();
+          state.audio.playSFX("clear");
+        }
+      }
+
+      function updateClear() {
+        state.clearTimer++;
+        if (state.time > 0) {
+          const bonusStep = Math.min(4, state.time);
+          state.time -= bonusStep;
+          state.score += bonusStep * 50;
+        }
+        if (state.time === 0 && state.clearTimer > 120) {
+          advanceToNextLevel();
+        }
+      }
+
+      function updateEnding() {
+        state.endingTimer++;
+        if ((input.startPressed || input.jumpPressed) && state.endingTimer > 30) {
+          backToTitle();
+        }
+        if (state.endingTimer > 360) {
+          backToTitle();
+        }
+      }
+
+      function updateGameOver() {
+        state.gameOverTimer++;
+        if ((input.startPressed || input.jumpPressed) && state.gameOverTimer > 24) {
+          backToTitle();
+        }
+      }
+
+      function update() {
+        state.frameCount++;
+        input.update();
+        if (state.mode === "title") {
+          updateTitle();
+          return;
+        }
+        if (state.mode === "intro") {
+          updateIntro();
+          return;
+        }
+        if (state.mode === "playing") {
+          updatePlaying();
+          return;
+        }
+        if (state.mode === "clear") {
+          updateClear();
+          return;
+        }
+        if (state.mode === "ending") {
+          updateEnding();
+          return;
+        }
+        if (state.mode === "gameover") {
+          updateGameOver();
+          return;
+        }
+      }
+
+      function renderIntro() {
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, CONFIG.INTERNAL_WIDTH, CONFIG.INTERNAL_HEIGHT);
+        drawNesTextShadow(ctx, "WORLD", 104, 100, "#ffffff");
+        drawNesTextShadow(ctx, state.world, 116, 114, "#ffffff");
+        drawNesTextShadow(ctx, "READY", 104, 138, "#ffffff");
+      }
+
+      function renderEnding() {
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, CONFIG.INTERNAL_WIDTH, CONFIG.INTERNAL_HEIGHT);
+        drawNesTextShadow(ctx, "WORLD 1 CLEAR", 72, 92, "#ffffff");
+        drawNesTextShadow(ctx, "THANK YOU FOR PLAYING", 36, 116, "#ffffff");
+        drawNesTextShadow(ctx, "PRESS START", 84, 160, "#ffffff");
+      }
+
+      function renderGameOver() {
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, CONFIG.INTERNAL_WIDTH, CONFIG.INTERNAL_HEIGHT);
+        drawNesTextShadow(ctx, "GAME OVER", 88, 98, "#ffffff");
+        drawNesTextShadow(ctx, "SCORE " + pad(state.score, 6), 76, 122, "#ffffff");
+        drawNesTextShadow(ctx, "PRESS START OR JUMP", 40, 156, "#ffffff");
+      }
+
+      function renderHud() {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
+        ctx.fillRect(0, 0, CONFIG.INTERNAL_WIDTH, 30);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.28)";
+        ctx.fillRect(0, 30, CONFIG.INTERNAL_WIDTH, 1);
+
+        drawNesTextShadow(ctx, "OMARI", 16, 8, "#ffffff");
+        drawNesTextShadow(ctx, "LIVES", 84, 8, "#ffffff");
+        drawNesTextShadow(ctx, "WORLD", 144, 8, "#ffffff");
+        drawNesTextShadow(ctx, "TIME", 208, 8, "#ffffff");
+        drawNesTextShadow(ctx, pad(state.score, 6), 16, 18, "#ffffff");
+        drawNesTextShadow(ctx, "X" + pad(state.lives, 2), 92, 18, "#ffffff");
+        drawNesTextShadow(ctx, state.world, 154, 18, "#ffffff");
+        drawNesTextShadow(ctx, String(state.time), 214, 18, "#ffffff");
+      }
+
+      function renderDebugPanel() {
+        const panelX = 116;
+        const panelY = 36;
+        const panelW = 136;
+        const panelH = 30;
+        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+        ctx.fillRect(panelX, panelY, panelW, panelH);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
+        ctx.fillRect(panelX, panelY, panelW, 1);
+        ctx.fillRect(panelX, panelY + panelH - 1, panelW, 1);
+
+        if (input.isMobileControl) {
+          drawNesTextShadow(ctx, "MOVE TILT L/R", panelX + 6, 40, "#ffffff", 1);
+          drawNesTextShadow(ctx, "JUMP TAP SCREEN", panelX + 6, 52, "#ffffff", 1);
+          return;
+        }
+        drawNesTextShadow(ctx, "MOVE ARROWS", panelX + 6, 40, "#ffffff", 1);
+        drawNesTextShadow(ctx, "DASH SHIFT/Z", panelX + 6, 48, "#ffffff", 1);
+        drawNesTextShadow(ctx, "JUMP SPACE/X", panelX + 6, 56, "#ffffff", 1);
+      }
+
+      function renderTitle() {
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, CONFIG.INTERNAL_WIDTH, CONFIG.INTERNAL_HEIGHT);
+        drawNesText(ctx, "HYPER ORIMA BROS", 52, 64, "#ffffff");
+        drawNesText(ctx, "TOP-" + pad(state.score, 6), 72, 88, "#ffffff");
+        drawNesText(ctx, "1 PLAYER GAME", 76, 116, "#ffffff");
+        drawNesText(ctx, "2 PLAYER GAME", 76, 132, "#ffffff");
+        drawNesText(ctx, "M", 60, state.titleSelection === 0 ? 116 : 132, "#ffffff");
+        drawNesText(ctx, input.isMobileControl ? "TAP TO START" : "ENTER OR SPACE TO START", input.isMobileControl ? 84 : 24, 164, "#ffffff");
+        drawNesText(ctx, "2026 DAISUKENOSUKE", 48, 196, "#ffffff");
+      }
+
+      function renderClearOverlay() {
+        drawNesText(ctx, "COURSE CLEAR", 84, 88, "#ffffff");
+        drawNesText(ctx, "TIME BONUS", 88, 108, "#ffffff");
+        drawNesText(ctx, String(state.time) + " X50", 96, 120, "#ffffff");
+      }
+
+      function renderGoalMarker() {
+        if (tileMap.levelId === "1-4" && state.axeX != null) {
+          const ax = Math.floor(state.axeX - state.cameraX);
+          if (ax >= -24 && ax <= CONFIG.INTERNAL_WIDTH + 24) {
+            drawStyledSprite(ctx, SPRITES.enemies.axe, MARIO_PALETTE, ax, 156, false);
+          }
+          return;
+        }
+
+        const gx = Math.floor(state.goalX - state.cameraX);
+        if (gx < -20 || gx > CONFIG.INTERNAL_WIDTH + 20) return;
+        ctx.fillStyle = "#f2f2f2";
+        ctx.fillRect(gx + 8, 96, 2, 128);
+        ctx.fillStyle = "#2ecf47";
+        ctx.fillRect(gx, 96, 16, 10);
+      }
+
+      function render() {
+        if (state.mode === "title") {
+          renderTitle();
+          return;
+        }
+        if (state.mode === "intro") {
+          renderIntro();
+          return;
+        }
+        if (state.mode === "ending") {
+          renderEnding();
+          return;
+        }
+        if (state.mode === "gameover") {
+          renderGameOver();
+          return;
+        }
+        renderBackground(state.cameraX, tileMap.theme);
+        tileMap.render(ctx, state.cameraX, state.frameCount);
+        renderGoalMarker();
+        for (const item of state.items) item.render(ctx, state.cameraX);
+        for (const enemy of state.enemies) enemy.render(ctx, state.cameraX);
+        mario.render(ctx, state.cameraX);
+        for (const popup of state.popups) popup.render(ctx, state.cameraX);
+        renderHud();
+        if (state.mode === "playing") renderDebugPanel();
+        if (state.mode === "clear") renderClearOverlay();
+      }
+
+      let previousTs = performance.now();
+      let accumulator = 0;
+      const frameMs = 1000 / CONFIG.FPS;
+
+      function gameLoop(ts) {
+        let delta = ts - previousTs;
+        if (delta > 100) delta = 100;
+        previousTs = ts;
+        accumulator += delta;
+
+        while (accumulator >= frameMs) {
+          update();
+          accumulator -= frameMs;
+        }
+
+        render();
+        requestAnimationFrame(gameLoop);
+      }
+
+      requestAnimationFrame(gameLoop);
+    })();
+  </script>
+</body>
+</html>

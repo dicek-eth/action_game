@@ -1,0 +1,9 @@
+# OS / Editor
+.DS_Store
+
+# Node / Vercel
+node_modules/
+.vercel/
+
+# Local app metadata
+.claude/
